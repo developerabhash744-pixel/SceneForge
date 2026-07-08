@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SceneForge</string>
+    <string name="title_activity_main">SceneForge</string>
+    <string name="package_name">com.sceneforge.app</string>
+    <string name="custom_url_scheme">com.sceneforge.app</string>
+</resources>
