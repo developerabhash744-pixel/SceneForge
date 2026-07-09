@@ -2092,30 +2092,38 @@
 .viewport-tablet .drawer-container.left-drawer,
 .viewport-tablet .drawer-container.right-drawer {
   position: relative !important;
-  width: 250px !important;
+  width: 0px !important;
   flex-shrink: 0 !important;
   height: 100% !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
   z-index: 5 !important;
   display: flex !important;
+  transition: width var(--transition-medium), visibility var(--transition-medium) !important;
+}
+
+.viewport-tablet .drawer-container.left-drawer.open,
+.viewport-tablet .drawer-container.right-drawer.open {
+  width: 250px !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
 }
 
 .viewport-tablet .drawer-container.left-drawer .drawer-sheet,
 .viewport-tablet .drawer-container.right-drawer .drawer-sheet {
   position: relative !important;
-  width: 100% !important;
+  width: 250px !important;
   transform: none !important;
   border: none !important;
   box-shadow: none !important;
   height: 100% !important;
 }
 
-.viewport-tablet .drawer-container.left-drawer {
+.viewport-tablet .drawer-container.left-drawer.open {
   border-right: 1px solid var(--border-light);
 }
 
-.viewport-tablet .drawer-container.right-drawer {
+.viewport-tablet .drawer-container.right-drawer.open {
   border-left: 1px solid var(--border-light);
 }
 
