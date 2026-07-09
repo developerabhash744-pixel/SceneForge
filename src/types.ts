@@ -5,7 +5,7 @@ export interface Keyframe {
 }
 
 export interface AnimationTrack {
-  property: 'position' | 'rotation' | 'scale' | 'color' | 'intensity';
+  property: 'position' | 'rotation' | 'scale' | 'color' | 'intensity' | 'emissive' | 'emissiveIntensity';
   keyframes: Keyframe[];
 }
 
@@ -18,7 +18,10 @@ export type ObjectType =
   | 'directionalLight'
   | 'pointLight'
   | 'spotLight'
-  | 'group';
+  | 'camera'
+  | 'audio'
+  | 'group'
+  | 'gltf';
 
 export interface SceneObject {
   id: string;
@@ -37,8 +40,14 @@ export interface SceneObject {
   metalness?: number;
   opacity?: number;
   emissive?: string; // Hex string
+  emissiveIntensity?: number;
   wireframe?: boolean;
-  texture?: 'default' | 'grid' | 'brick' | 'wood' | 'metal';
+  texture?: 'default' | 'grid' | 'brick' | 'wood' | 'metal' | 'custom';
+  // Parametric geometry properties
+  radius?: number;
+  segments?: number;
+  radialSegments?: number;
+  tubularSegments?: number;
   // Light properties
   intensity?: number;
   distance?: number;
@@ -48,6 +57,7 @@ export interface SceneObject {
   tracks: AnimationTrack[];
   // Custom user-defined tags/metadata
   customProperties: Record<string, string>;
+  script?: string;
 }
 
 export interface EditorState {
@@ -66,4 +76,23 @@ export interface EditorState {
   snapRotation: number; // in degrees
   snapScale: number;
   cameraPreset: 'perspective' | 'top' | 'front' | 'right';
+  transformSpace: 'local' | 'world';
+  fpsMode: boolean;
+  skyboxPreset: 'noon' | 'sunset' | 'space' | 'stormy';
+  fogEnabled: boolean;
+  fogColor: string;
+  fogDensity: number;
+  bloomEnabled: boolean;
+  gridVisible: boolean;
+  measureMode: boolean;
+  gizmoSize: number;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  objects: SceneObject[];
+  editorState: Omit<EditorState, 'objects' | 'selectedId'>;
 }

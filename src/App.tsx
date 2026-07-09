@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import type { SceneObject, ObjectType, EditorState, AnimationTrack } from './types';
+import type { Keyframe, SceneObject, ObjectType, EditorState, AnimationTrack, Project } from './types';
 import { ThreeViewport } from './components/ThreeViewport';
 import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
 import { Timeline } from './components/Timeline';
+import { ProjectHub } from './components/ProjectHub';
 import {
   Download,
   Upload,
@@ -15,6 +16,11 @@ import {
   Grid,
   Video,
   Smartphone,
+  Menu,
+  X,
+  Sliders,
+  FileCode,
+  Eye,
 } from 'lucide-react';
 import './App.css';
 
@@ -128,12 +134,95 @@ const initialObjects: SceneObject[] = [
 ];
 
 export function App() {
-  const [objects, setObjects] = useState<SceneObject[]>(() => {
-    const saved = localStorage.getItem('sceneforge_level');
-    return saved ? JSON.parse(saved) : initialObjects;
+  const [objects, setObjects] = useState<SceneObject[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const [currentView, setCurrentView] = useState<'hub' | 'editor'>('hub');
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
+  const [viewportMode, setViewportMode] = useState<'mobile' | 'tablet'>(() => {
+    const saved = localStorage.getItem('sceneforge_viewport_mode');
+    return (saved as any) || 'mobile';
   });
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (meta) {
+      if (viewportMode === 'tablet') {
+        meta.setAttribute('content', 'width=1024, initial-scale=0.75, maximum-scale=1.5, user-scalable=yes');
+      } else {
+        meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
+      }
+    }
+    localStorage.setItem('sceneforge_viewport_mode', viewportMode);
+  }, [viewportMode]);
+
+  // UI Panel Drawer States
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [previewModeActive, setPreviewModeActive] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => setLoading(false), 200);
+          return 100;
+        }
+        return prev + 4;
+      });
+    }, 40);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Keyboard Shortcuts Support
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable)) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setEditorState((prev) => ({ ...prev, isPlaying: !prev.isPlaying }));
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId) {
+          handleDeleteObject(selectedId);
+        }
+      } else if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (selectedId) {
+          handleDuplicateObject(selectedId);
+        }
+      } else if (e.key === 'f' || e.key === 'F') {
+        if (selectedId) {
+          const event = new CustomEvent('focus-object-camera', { detail: { id: selectedId } });
+          window.dispatchEvent(event);
+        }
+      } else if (e.key === 'g' || e.key === 'G') {
+        if (selectedId) {
+          const event = new CustomEvent('drop-object-to-ground', { detail: { id: selectedId } });
+          window.dispatchEvent(event);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedId, objects]);
+
+  const handleSelectObject = (id: string | null) => {
+    setSelectedId(id);
+    setTimelineExpanded(!!id);
+  };
 
   // Timeline / State controls
   const [editorState, setEditorState] = useState<Omit<EditorState, 'objects' | 'selectedId'>>({
@@ -150,15 +239,99 @@ export function App() {
     snapRotation: 15,
     snapScale: 0.1,
     cameraPreset: 'perspective',
+    transformSpace: 'local',
+    fpsMode: false,
+    skyboxPreset: 'noon',
+    fogEnabled: false,
+    fogColor: '#1e293b',
+    fogDensity: 0.015,
+    bloomEnabled: false,
+    gridVisible: true,
+    measureMode: false,
+    gizmoSize: 0.85,
   });
 
-  // Save current project state in LocalStorage on object modification
+  // Load active project on startup if it exists in database
   useEffect(() => {
-    localStorage.setItem('sceneforge_level', JSON.stringify(objects));
-  }, [objects]);
+    const lastActiveId = localStorage.getItem('sceneforge_active_project_id');
+    if (lastActiveId) {
+      const raw = localStorage.getItem('sceneforge_all_projects');
+      if (raw) {
+        try {
+          const list = JSON.parse(raw) as Project[];
+          const found = list.find((p) => p.id === lastActiveId);
+          if (found) {
+            setObjects(found.objects);
+            setEditorState(found.editorState);
+            setActiveProjectId(found.id);
+            setCurrentView('editor');
+          }
+        } catch (e) {
+          console.error('Error restoring active project', e);
+        }
+      }
+    }
+  }, []);
 
-  const handleUpdateState = (updates: Partial<typeof editorState>) => {
+  // Auto-save changes to the active project in the database
+  useEffect(() => {
+    if (activeProjectId) {
+      const raw = localStorage.getItem('sceneforge_all_projects');
+      if (raw) {
+        try {
+          const allProjects = JSON.parse(raw) as Project[];
+          const idx = allProjects.findIndex((p) => p.id === activeProjectId);
+          if (idx !== -1) {
+            allProjects[idx].objects = objects;
+            allProjects[idx].editorState = editorState;
+            localStorage.setItem('sceneforge_all_projects', JSON.stringify(allProjects));
+          }
+        } catch (err) {
+          console.error('Error auto-saving project changes', err);
+        }
+      }
+    }
+  }, [objects, editorState, activeProjectId]);
+
+  const [measuredDistance, setMeasuredDistance] = useState<number | null>(null);
+  const [measureStatus, setMeasureStatus] = useState<'idle' | 'first_clicked' | 'measured'>('idle');
+
+  useEffect(() => {
+    const handleRulerUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setMeasuredDistance(detail.distance);
+      setMeasureStatus(detail.status);
+    };
+    window.addEventListener('ruler-update', handleRulerUpdate);
+    return () => {
+      window.removeEventListener('ruler-update', handleRulerUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!editorState.measureMode) {
+      setMeasuredDistance(null);
+      setMeasureStatus('idle');
+    }
+  }, [editorState.measureMode]);
+
+  const handleUpdateState = (updates: Partial<typeof editorState> & { viewportMode?: 'mobile' | 'tablet' }) => {
+    if (updates.viewportMode !== undefined) {
+      setViewportMode(updates.viewportMode);
+    }
     setEditorState((prev) => ({ ...prev, ...updates }));
+  };
+
+  const handleLoadProject = (project: Project) => {
+    setObjects(project.objects);
+    setEditorState(project.editorState);
+    setActiveProjectId(project.id);
+    localStorage.setItem('sceneforge_active_project_id', project.id);
+    setCurrentView('editor');
+  };
+
+  const handleBackToHub = () => {
+    setCurrentView('hub');
   };
 
   // Helper to record/autokey changes on a scene object
@@ -230,7 +403,7 @@ export function App() {
   };
 
   // Add a shape or light
-  const handleAddObject = (type: ObjectType) => {
+  const handleAddObject = (type: ObjectType, customProps?: Partial<SceneObject>) => {
     const typeCount = objects.filter((o) => o.type === type).length + 1;
     const nameMap: Record<ObjectType, string> = {
       cube: `Cube ${typeCount}`,
@@ -241,22 +414,42 @@ export function App() {
       directionalLight: `Directional Light ${typeCount}`,
       pointLight: `Point Light ${typeCount}`,
       spotLight: `Spot Light ${typeCount}`,
+      camera: `Camera ${typeCount}`,
+      audio: `Audio ${typeCount}`,
       group: `Group ${typeCount}`,
+      gltf: `Model ${typeCount}`,
     };
 
     const newObj: SceneObject = {
       id: `${type}-${Date.now()}`,
-      name: nameMap[type],
+      name: customProps?.name || nameMap[type],
       type,
       visible: true,
       locked: false,
-      parentId: null,
-      position: [0, type === 'plane' ? 0 : 0.5, 0],
+      parentId: customProps?.parentId !== undefined ? customProps.parentId : null,
+      position: customProps?.position || (() => {
+        let defaultPos: [number, number, number] = [0, type === 'plane' ? 0 : 0.5, 0];
+        if (type !== 'plane' && type !== 'group' && !type.includes('Light') && type !== 'camera' && type !== 'audio') {
+          let maxY = 0.5;
+          objects.forEach((o) => {
+            if (Math.abs(o.position[0]) < 0.1 && Math.abs(o.position[2]) < 0.1 && o.type !== 'plane' && o.type !== 'group' && !o.type.includes('Light') && o.type !== 'camera' && o.type !== 'audio') {
+              const top = o.position[1] + o.scale[1] / 2;
+              if (top > maxY) {
+                maxY = top;
+              }
+            }
+          });
+          if (maxY > 0.5) {
+            defaultPos = [0, maxY + 0.5, 0];
+          }
+        }
+        return defaultPos;
+      })(),
       rotation: [0, 0, 0],
       scale: [1, 1, 1],
-      color: type.includes('Light') ? '#ffffff' : '#cbd5e1',
+      color: customProps?.color || (type.includes('Light') ? '#ffffff' : '#cbd5e1'),
       tracks: [],
-      customProperties: {},
+      customProperties: customProps?.customProperties || {},
     };
 
     // Special light properties
@@ -279,7 +472,7 @@ export function App() {
     }
 
     setObjects((prev) => [...prev, newObj]);
-    setSelectedId(newObj.id);
+    handleSelectObject(newObj.id);
   };
 
   // Delete an object and resolve parent-child chains
@@ -302,6 +495,20 @@ export function App() {
     if (selectedId === id) {
       setSelectedId(null);
     }
+  };
+
+  const handleDuplicateObject = (id: string) => {
+    const sourceObj = objects.find((o) => o.id === id);
+    if (!sourceObj) return;
+
+    const newId = `${sourceObj.type}-${Date.now()}`;
+    const newObj: SceneObject = JSON.parse(JSON.stringify(sourceObj));
+    newObj.id = newId;
+    newObj.name = `${sourceObj.name} (Copy)`;
+    newObj.position = [sourceObj.position[0] + 0.5, sourceObj.position[1], sourceObj.position[2] + 0.5];
+
+    setObjects((prev) => [...prev, newObj]);
+    handleSelectObject(newId);
   };
 
   // Modify object fields
@@ -375,6 +582,31 @@ export function App() {
     );
   };
 
+  const handleUpdateKeyframeEasing = (
+    id: string,
+    property: AnimationTrack['property'],
+    frame: number,
+    easing: Keyframe['easing']
+  ) => {
+    setObjects((prev) =>
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const tracks = [...o.tracks];
+        const trackIndex = tracks.findIndex((t) => t.property === property);
+        if (trackIndex !== -1) {
+          const track = tracks[trackIndex];
+          const kfIndex = track.keyframes.findIndex((k) => k.frame === frame);
+          if (kfIndex !== -1) {
+            const keyframes = [...track.keyframes];
+            keyframes[kfIndex] = { ...keyframes[kfIndex], easing };
+            tracks[trackIndex] = { ...track, keyframes };
+          }
+        }
+        return { ...o, tracks };
+      })
+    );
+  };
+
   // Level Save/Load Actions
   const handleResetScene = () => {
     if (window.confirm('Are you sure you want to reset the current level scene?')) {
@@ -397,6 +629,11 @@ export function App() {
     link.href = url;
     link.download = `sceneforge_level_${Date.now()}.json`;
     link.click();
+  };
+
+  const handleExportGLTF = () => {
+    const event = new CustomEvent('export-scene-gltf');
+    window.dispatchEvent(event);
   };
 
   const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -424,16 +661,72 @@ export function App() {
   // Find currently selected object
   const selectedObject = objects.find((o) => o.id === selectedId) || null;
 
+  if (loading) {
+    return (
+      <div className="app-loader-screen animate-fade-in">
+        <div className="loader-content">
+          <div className="loader-logo-ring">
+            <Smartphone size={48} className="loader-icon text-cyan-400" />
+          </div>
+          <h1 className="loader-title">SceneForge</h1>
+          <p className="loader-subtitle">3D Mobile Level & Animation Platform</p>
+          
+          <div className="progress-bar-container">
+            <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="progress-text">Loading Assets & Engine... {progress}%</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'hub') {
+    return (
+      <ProjectHub
+        onLoadProject={handleLoadProject}
+        activeProjectId={activeProjectId}
+        onBackToEditor={() => setCurrentView('editor')}
+      />
+    );
+  }
+
   return (
-    <div className="sceneforge-app dark-theme">
+    <div className={`sceneforge-app dark-theme viewport-${viewportMode} ${timelineExpanded ? 'timeline-expanded' : 'timeline-collapsed'} ${previewModeActive ? 'preview-mode-active' : ''}`}>
       {/* Top Header Bar */}
       <header className="app-header">
         <div className="header-left">
-          <Smartphone className="logo-icon text-cyan-400" />
-          <div className="logo-text">
-            <h1>SceneForge</h1>
-            <span className="subtitle">Mobile Level & Anim Editor</span>
+          {/* Hamburger Menu trigger */}
+          <button
+            className={`header-toggle-btn ${sidebarOpen ? 'active' : ''}`}
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            title="Toggle Spawner & Outliner"
+          >
+            <Menu size={18} />
+          </button>
+          <div className="logo-container" onClick={handleBackToHub} title="Back to Project Hub" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <Smartphone className="logo-icon text-cyan-400" />
           </div>
+          <button
+            onClick={handleBackToHub}
+            className="header-btn"
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-light)',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              color: 'var(--text-secondary)',
+              marginLeft: '12px'
+            }}
+            title="Switch Workspace / Dashboard"
+          >
+            <span>Projects Dashboard</span>
+          </button>
         </div>
 
         <div className="header-actions">
@@ -455,26 +748,102 @@ export function App() {
             <Download size={14} />
             <span>Export</span>
           </button>
+
+          {/* Export 3D GLTF */}
+          <button className="header-btn export-gltf-btn" onClick={handleExportGLTF} title="Export 3D Model (GLTF)">
+            <FileCode size={14} className="text-cyan-400" />
+            <span>Export 3D</span>
+          </button>
+
+          {/* Director Preview Mode Toggle */}
+          <button
+            className={`header-btn preview-mode-btn ${previewModeActive ? 'active' : ''}`}
+            onClick={() => setPreviewModeActive(!previewModeActive)}
+            title="Toggle Director Preview Mode"
+          >
+            <Eye size={14} className="text-cyan-400" />
+            <span>Preview</span>
+          </button>
+
+          {/* Inspector Panel trigger */}
+          <button
+            className={`header-toggle-btn ${inspectorOpen ? 'active' : ''} ${selectedId ? 'has-selection' : ''}`}
+            onClick={() => setInspectorOpen(!inspectorOpen)}
+            title="Toggle Object Properties Inspector"
+          >
+            <Sliders size={18} />
+          </button>
         </div>
       </header>
 
       {/* Main Workspace Frame */}
       <div className="workspace-main">
-        {/* Left Drawer Panels */}
-        <Sidebar
-          objects={objects}
-          selectedId={selectedId}
-          onSelectObject={setSelectedId}
-          onAddObject={handleAddObject}
-          onDeleteObject={handleDeleteObject}
-          onUpdateObject={handleUpdateObject}
-        />
+        {/* Left Slide-out Drawer Panel (Add Shelf / Outliner) */}
+        <div className={`drawer-container left-drawer ${sidebarOpen ? 'open' : ''}`}>
+          <div className="drawer-backdrop" onClick={() => setSidebarOpen(false)} />
+          <div className="drawer-sheet">
+            <div className="drawer-sheet-header">
+              <h3>Tools & Hierarchy</h3>
+              <button className="drawer-close-btn" onClick={() => setSidebarOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <Sidebar
+              objects={objects}
+              selectedId={selectedId}
+              editorState={{ ...editorState, viewportMode }}
+              onSelectObject={handleSelectObject}
+              onAddObject={(type, customProps) => {
+                handleAddObject(type, customProps);
+                setSidebarOpen(false); // Auto-close drawer on spawn so user can see it in 3D viewport
+              }}
+              onDeleteObject={handleDeleteObject}
+              onUpdateObject={handleUpdateObject}
+              onDuplicateObject={handleDuplicateObject}
+              onUpdateState={handleUpdateState}
+            />
+          </div>
+        </div>
 
         {/* Center Viewport */}
-        <main className="viewport-wrapper">
+        <main className="viewport-wrapper" style={{ position: 'relative' }}>
+          {/* Visual measurement ruler readouts HUD */}
+          {editorState.measureMode && (
+            <div className="ruler-hud-banner" style={{
+              position: 'absolute',
+              top: '64px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(15, 23, 42, 0.9)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgb(0, 240, 255)',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#fff',
+              zIndex: 100,
+              fontSize: '11px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap'
+            }}>
+              <span style={{ color: 'rgb(0, 240, 255)', fontWeight: 'bold' }}>📏 RULER:</span>
+              {measureStatus === 'idle' && <span>Tap 3D surface to start measuring</span>}
+              {measureStatus === 'first_clicked' && <span>First point marked. Tap second point...</span>}
+              {measureStatus === 'measured' && (
+                <>
+                  <span>Distance:</span>
+                  <strong style={{ color: 'rgb(0, 240, 255)', fontSize: '13px' }}>{measuredDistance?.toFixed(3)}m</strong>
+                  <span style={{ fontSize: '9px', opacity: 0.6 }}>(Tap again to measure another)</span>
+                </>
+              )}
+            </div>
+          )}
           {/* Overlay Viewport Controls */}
-          <div className="viewport-overlay-controls">
-            {/* Transform Modes */}
+          {/* Top-Left: Transform Modes */}
+          <div className="viewport-overlay-controls top-left">
             <div className="overlay-group">
               <button
                 className={`overlay-btn ${editorState.transformMode === 'select' ? 'active' : ''}`}
@@ -504,9 +873,20 @@ export function App() {
               >
                 <Maximize2 size={16} />
               </button>
+              <span className="overlay-divider" style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+              <button
+                className="overlay-btn space-toggle-btn"
+                onClick={() => handleUpdateState({ transformSpace: editorState.transformSpace === 'local' ? 'world' : 'local' })}
+                title={`Coordinate Space: ${editorState.transformSpace.toUpperCase()}`}
+                style={{ fontSize: '9px', fontWeight: 'bold', width: 'auto', padding: '0 8px' }}
+              >
+                {editorState.transformSpace.toUpperCase()}
+              </button>
             </div>
+          </div>
 
-            {/* Grid Snapping */}
+          {/* Top-Right: Grid Snapping */}
+          <div className="viewport-overlay-controls top-right">
             <div className="overlay-group">
               <button
                 className={`overlay-btn snap-toggle ${editorState.snapEnabled ? 'active' : ''}`}
@@ -521,12 +901,12 @@ export function App() {
                     value={editorState.snapTranslation}
                     onChange={(e) => handleUpdateState({ snapTranslation: parseFloat(e.target.value) })}
                     className="snap-select"
-                    title="Translation Snap"
+                    title="Translation Snap (Grid)"
                   >
-                    <option value={0.1}>0.1m</option>
-                    <option value={0.25}>0.25m</option>
-                    <option value={0.5}>0.5m</option>
-                    <option value={1.0}>1.0m</option>
+                    <option value={0.1}>Grid: 0.1m</option>
+                    <option value={0.25}>Grid: 0.25m</option>
+                    <option value={0.5}>Grid: 0.5m</option>
+                    <option value={1.0}>Grid: 1.0m</option>
                   </select>
                   <select
                     value={editorState.snapRotation}
@@ -534,17 +914,39 @@ export function App() {
                     className="snap-select"
                     title="Rotation Snap"
                   >
-                    <option value={5}>5°</option>
-                    <option value={15}>15°</option>
-                    <option value={45}>45°</option>
-                    <option value={90}>90°</option>
+                    <option value={5}>Snap: 5°</option>
+                    <option value={15}>Snap: 15°</option>
+                    <option value={45}>Snap: 45°</option>
+                    <option value={90}>Snap: 90°</option>
+                  </select>
+                  <select
+                    value={editorState.snapScale}
+                    onChange={(e) => handleUpdateState({ snapScale: parseFloat(e.target.value) })}
+                    className="snap-select"
+                    title="Scale Snap"
+                  >
+                    <option value={0.05}>Scale: 0.05x</option>
+                    <option value={0.1}>Scale: 0.1x</option>
+                    <option value={0.25}>Scale: 0.25x</option>
+                    <option value={0.5}>Scale: 0.5x</option>
                   </select>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Camera Presets */}
+          {/* Bottom-Right (Floating above timeline): Camera Presets */}
+          <div className="viewport-overlay-controls bottom-right">
             <div className="overlay-group">
+              <button
+                className={`overlay-btn camera-btn ${editorState.fpsMode ? 'active' : ''}`}
+                onClick={() => handleUpdateState({ fpsMode: !editorState.fpsMode })}
+                title="Toggle First-Person WASD Walkthrough"
+                style={{ background: editorState.fpsMode ? 'rgba(239, 68, 68, 0.25)' : 'none', borderColor: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'transparent' }}
+              >
+                <span style={{ fontSize: '9px', fontWeight: 'bold', color: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'inherit' }}>FPS</span>
+              </button>
+              <span className="overlay-divider" style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
               <button
                 className={`overlay-btn camera-btn ${editorState.cameraPreset === 'perspective' ? 'active' : ''}`}
                 onClick={() => handleUpdateState({ cameraPreset: 'perspective' })}
@@ -585,24 +987,56 @@ export function App() {
             snapTranslation={editorState.snapTranslation}
             snapRotation={editorState.snapRotation}
             snapScale={editorState.snapScale}
+            transformSpace={editorState.transformSpace}
+            fpsMode={editorState.fpsMode}
+            skyboxPreset={editorState.skyboxPreset}
+            fogEnabled={editorState.fogEnabled}
+            fogColor={editorState.fogColor}
+            fogDensity={editorState.fogDensity}
+            bloomEnabled={editorState.bloomEnabled}
+            gridVisible={editorState.gridVisible}
+            measureMode={editorState.measureMode}
+            gizmoSize={editorState.gizmoSize}
             currentFrame={editorState.currentFrame}
             isPlaying={editorState.isPlaying}
             fps={editorState.fps}
             loop={editorState.loop}
             cameraPreset={editorState.cameraPreset}
-            onSelectObject={setSelectedId}
+            previewMode={previewModeActive}
+            onSelectObject={handleSelectObject}
             onUpdateObjectTransform={handleUpdateObjectTransform}
             onFrameChange={(frame) => handleUpdateState({ currentFrame: frame })}
           />
         </main>
 
-        {/* Right Drawer Inspector */}
-        <Inspector
-          object={selectedObject}
-          currentFrame={editorState.currentFrame}
-          onUpdateObject={handleUpdateObject}
-          onToggleKeyframe={handleToggleKeyframe}
-        />
+        {/* Right Slide-out Drawer Panel (Object Inspector) */}
+        <div className={`drawer-container right-drawer ${inspectorOpen ? 'open' : ''}`}>
+          <div className="drawer-backdrop" onClick={() => setInspectorOpen(false)} />
+          <div className="drawer-sheet">
+            <div className="drawer-sheet-header">
+              <h3>Object Inspector</h3>
+              <button className="drawer-close-btn" onClick={() => setInspectorOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <Inspector
+              object={selectedObject}
+              currentFrame={editorState.currentFrame}
+              onUpdateObject={handleUpdateObject}
+              onToggleKeyframe={handleToggleKeyframe}
+              onDeleteObject={(id) => {
+                handleDeleteObject(id);
+                setInspectorOpen(false); // Close inspector drawer on delete
+              }}
+              onDropToGround={(id) => {
+                const event = new CustomEvent('drop-object-to-ground', { detail: { id } });
+                window.dispatchEvent(event);
+              }}
+              onDuplicateObject={handleDuplicateObject}
+              onUpdateKeyframeEasing={handleUpdateKeyframeEasing}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Bottom Keyframe Timeline */}
@@ -615,9 +1049,23 @@ export function App() {
         fps={editorState.fps}
         loop={editorState.loop}
         autoKeyframe={editorState.autoKeyframe}
+        expanded={timelineExpanded}
+        onToggleExpand={setTimelineExpanded}
         onUpdateState={handleUpdateState}
         onUpdateObject={handleUpdateObject}
       />
+
+      {/* Director Preview Overlays */}
+      {previewModeActive && (
+        <button
+          className="exit-preview-mode-floating-btn"
+          onClick={() => setPreviewModeActive(false)}
+          title="Exit Preview Mode"
+        >
+          <Eye size={16} />
+          <span>Exit Preview</span>
+        </button>
+      )}
     </div>
   );
 }

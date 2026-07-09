@@ -6,6 +6,8 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Trash2,
   Zap,
 } from 'lucide-react';
@@ -21,6 +23,8 @@ interface TimelineProps {
   fps: number;
   loop: boolean;
   autoKeyframe: boolean;
+  expanded: boolean;
+  onToggleExpand: (val: boolean) => void;
   onUpdateState: (updates: {
     currentFrame?: number;
     isPlaying?: boolean;
@@ -40,6 +44,8 @@ export function Timeline({
   fps,
   loop,
   autoKeyframe,
+  expanded,
+  onToggleExpand,
   onUpdateState,
   onUpdateObject,
 }: TimelineProps) {
@@ -49,10 +55,15 @@ export function Timeline({
     frame: number;
     easing: Keyframe['easing'];
   } | null>(null);
+  const [selectedKeyframesList, setSelectedKeyframesList] = useState<Array<{
+    trackProp: AnimationTrack['property'];
+    frame: number;
+  }>>([]);
 
   // Close keyframe popover if selected object changes
   useEffect(() => {
     setSelectedKeyframe(null);
+    setSelectedKeyframesList([]);
   }, [object?.id]);
 
   // Total frame range
@@ -113,6 +124,22 @@ export function Timeline({
     kf: Keyframe
   ) => {
     e.stopPropagation();
+    
+    const kfInfo = { trackProp, frame: kf.frame };
+    
+    if (e.shiftKey) {
+      setSelectedKeyframesList((prev) => {
+        const exists = prev.some((x) => x.trackProp === trackProp && x.frame === kf.frame);
+        if (exists) {
+          return prev.filter((x) => !(x.trackProp === trackProp && x.frame === kf.frame));
+        } else {
+          return [...prev, kfInfo];
+        }
+      });
+    } else {
+      setSelectedKeyframesList([kfInfo]);
+    }
+
     setSelectedKeyframe({
       trackProp,
       frame: kf.frame,
@@ -122,16 +149,17 @@ export function Timeline({
   };
 
   const handleUpdateEasing = (easing: Keyframe['easing']) => {
-    if (!object || !selectedKeyframe) return;
+    if (!object || selectedKeyframesList.length === 0) return;
 
-    const { trackProp, frame } = selectedKeyframe;
     const updatedTracks = object.tracks.map((track) => {
-      if (track.property !== trackProp) return track;
       return {
         ...track,
-        keyframes: track.keyframes.map((kf) =>
-          kf.frame === frame ? { ...kf, easing } : kf
-        ),
+        keyframes: track.keyframes.map((kf) => {
+          const isSel = selectedKeyframesList.some(
+            (sk) => sk.trackProp === track.property && sk.frame === kf.frame
+          );
+          return isSel ? { ...kf, easing } : kf;
+        }),
       };
     });
 
@@ -140,19 +168,22 @@ export function Timeline({
   };
 
   const handleDeleteKeyframe = () => {
-    if (!object || !selectedKeyframe) return;
+    if (!object || selectedKeyframesList.length === 0) return;
 
-    const { trackProp, frame } = selectedKeyframe;
     const updatedTracks = object.tracks.map((track) => {
-      if (track.property !== trackProp) return track;
       return {
         ...track,
-        keyframes: track.keyframes.filter((kf) => kf.frame !== frame),
+        keyframes: track.keyframes.filter(
+          (kf) => !selectedKeyframesList.some(
+            (sk) => sk.trackProp === track.property && sk.frame === kf.frame
+          )
+        ),
       };
-    }).filter((t) => t.keyframes.length > 0); // Clean up empty tracks
+    }).filter((t) => t.keyframes.length > 0);
 
     onUpdateObject(object.id, { tracks: updatedTracks });
     setSelectedKeyframe(null);
+    setSelectedKeyframesList([]);
   };
 
   // Render keyframe markers for a track
@@ -163,8 +194,9 @@ export function Timeline({
 
     return track.keyframes.map((kf) => {
       const leftPct = ((kf.frame - startFrame) / totalFrames) * 100;
-      const isSelected =
-        selectedKeyframe?.trackProp === trackProp && selectedKeyframe?.frame === kf.frame;
+      const isSelected = selectedKeyframesList.some(
+        (sk) => sk.trackProp === trackProp && sk.frame === kf.frame
+      );
 
       return (
         <div
@@ -275,107 +307,135 @@ export function Timeline({
             <option value={60}>60 FPS</option>
           </select>
         </div>
+
+        {/* Expand/Collapse Timeline */}
+        <div className="controls-group" style={{ marginLeft: 'auto' }}>
+          <button
+            className={`control-toggle-btn expand-timeline-btn ${expanded ? 'active' : ''}`}
+            onClick={() => onToggleExpand(!expanded)}
+            title={expanded ? 'Collapse Dope Sheet' : 'Expand Dope Sheet'}
+          >
+            {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            <span>{expanded ? 'Hide DopeSheet' : 'Show DopeSheet'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Dope Sheet / Keyframe Tracks */}
-      <div className="dope-sheet">
-        {/* Left labels column */}
-        <div className="dope-labels-col">
-          <div className="track-row-label header-label">Timeline</div>
-          {object ? (
-            <>
-              <div className="track-row-label object-summary-label">
-                <strong>{object.name}</strong>
-              </div>
-              {activeTrackProps.map((prop) => (
-                <div key={prop} className="track-row-label sub-track-label">
-                  {prop.charAt(0).toUpperCase() + prop.slice(1)}
+      {expanded && (
+        <>
+          <div className="dope-sheet">
+            {/* Left labels column */}
+            <div className="dope-labels-col">
+              <div className="track-row-label header-label">Timeline</div>
+              {object ? (
+                <>
+                  <div className="track-row-label object-summary-label">
+                    <strong>{object.name}</strong>
+                  </div>
+                  {activeTrackProps.map((prop) => (
+                    <div key={prop} className="track-row-label sub-track-label">
+                      {prop.charAt(0).toUpperCase() + prop.slice(1)}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="track-row-label empty-labels-placeholder">
+                  Select object to view tracks
                 </div>
-              ))}
-            </>
-          ) : (
-            <div className="track-row-label empty-labels-placeholder">
-              Select object to view tracks
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Right timeline grid column */}
-        <div className="dope-tracks-col">
-          {/* Timeline header for dragging and tick marks */}
-          <div
-            className="tracks-header-scrubber"
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleTouchStart}
-            ref={tracksContainerRef}
-          >
-            {renderTicks()}
-            {/* Draggable Playhead marker */}
-            <div
-              className="playhead-marker"
-              style={{ left: `${((currentFrame - startFrame) / totalFrames) * 100}%` }}
-            >
-              <div className="playhead-needle" />
-            </div>
-          </div>
-
-          {/* Dope sheet track rows */}
-          {object ? (
-            <div className="tracks-body-scroll">
-              {/* Summary track containing all keyframes combined */}
-              <div className="track-row object-summary-track">
-                {activeTrackProps.map((prop) => renderKeyframes(prop))}
-              </div>
-
-              {/* Sub-property tracks */}
-              {activeTrackProps.map((prop) => (
-                <div key={prop} className="track-row sub-property-track">
-                  {renderKeyframes(prop)}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="timeline-empty-message">
-              No active animation tracks. Create keyframes in the inspector.
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Keyframe Context Editor Popover */}
-      {selectedKeyframe && object && (
-        <div className="keyframe-popover">
-          <div className="popover-title">
-            <span>
-              Edit Keyframe: <strong>{selectedKeyframe.trackProp}</strong> (f: {selectedKeyframe.frame})
-            </span>
-          </div>
-          <div className="popover-body">
-            <div className="popover-control">
-              <span className="control-lbl">Easing</span>
-              <select
-                value={selectedKeyframe.easing}
-                onChange={(e) => handleUpdateEasing(e.target.value as Keyframe['easing'])}
-                className="easing-select"
+            {/* Right timeline grid column */}
+            <div className="dope-tracks-col">
+              {/* Timeline header for dragging and tick marks */}
+              <div
+                className="tracks-header-scrubber"
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                ref={tracksContainerRef}
               >
-                <option value="linear">Linear</option>
-                <option value="easeIn">Ease In</option>
-                <option value="easeOut">Ease Out</option>
-                <option value="easeInOut">Ease In-Out</option>
-                <option value="constant">Constant (Step)</option>
-              </select>
-            </div>
-            <div className="popover-actions">
-              <button className="popover-action-btn delete" onClick={handleDeleteKeyframe}>
-                <Trash2 size={12} />
-                <span>Delete Keyframe</span>
-              </button>
-              <button className="popover-action-btn close" onClick={() => setSelectedKeyframe(null)}>
-                <span>Close</span>
-              </button>
+                {renderTicks()}
+                {/* Draggable Playhead marker */}
+                <div
+                  className="playhead-marker"
+                  style={{ left: `${((currentFrame - startFrame) / totalFrames) * 100}%` }}
+                >
+                  <div className="playhead-needle" />
+                </div>
+              </div>
+
+              {/* Dope sheet track rows */}
+              {object ? (
+                <div className="tracks-body-scroll">
+                  {/* Summary track containing all keyframes combined */}
+                  <div className="track-row object-summary-track">
+                    {activeTrackProps.map((prop) => renderKeyframes(prop))}
+                  </div>
+
+                  {/* Sub-property tracks */}
+                  {activeTrackProps.map((prop) => (
+                    <div key={prop} className="track-row sub-property-track">
+                      {renderKeyframes(prop)}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="timeline-empty-message">
+                  No active animation tracks. Create keyframes in the inspector.
+                </div>
+              )}
             </div>
           </div>
-        </div>
+
+          {/* Keyframe Context Editor Popover */}
+          {selectedKeyframe && object && (
+            <div className="keyframe-popover">
+              <div className="popover-title">
+                <span>
+                  {selectedKeyframesList.length > 1
+                    ? `Edit Selected Keyframes (${selectedKeyframesList.length})`
+                    : `Edit Keyframe: ${selectedKeyframe.trackProp} (f: ${selectedKeyframe.frame})`}
+                </span>
+              </div>
+              <div className="popover-body">
+                <div className="popover-control">
+                  <span className="control-lbl">Easing</span>
+                  <select
+                    value={selectedKeyframe.easing}
+                    onChange={(e) => handleUpdateEasing(e.target.value as Keyframe['easing'])}
+                    className="easing-select"
+                  >
+                    <option value="linear">Linear</option>
+                    <option value="easeIn">Ease In</option>
+                    <option value="easeOut">Ease Out</option>
+                    <option value="easeInOut">Ease In-Out</option>
+                    <option value="constant">Constant (Step)</option>
+                  </select>
+                </div>
+                <div className="popover-actions">
+                  <button className="popover-action-btn delete" onClick={handleDeleteKeyframe}>
+                    <Trash2 size={12} />
+                    <span>
+                      {selectedKeyframesList.length > 1
+                        ? `Delete Selected (${selectedKeyframesList.length})`
+                        : "Delete Keyframe"}
+                    </span>
+                  </button>
+                  <button
+                    className="popover-action-btn close"
+                    onClick={() => {
+                      setSelectedKeyframe(null);
+                      setSelectedKeyframesList([]);
+                    }}
+                  >
+                    <span>Close</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </footer>
   );
