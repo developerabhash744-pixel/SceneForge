@@ -142,7 +142,7 @@ export function App() {
 
   const [viewportMode, setViewportMode] = useState<'mobile' | 'tablet'>(() => {
     const saved = localStorage.getItem('sceneforge_viewport_mode');
-    return (saved as any) || 'mobile';
+    return (saved as any) || 'tablet';
   });
 
   useEffect(() => {
