@@ -20,6 +20,7 @@ import {
   Camera,
   Music,
   Copy,
+  FileCode,
 } from 'lucide-react';
 import type { SceneObject, ObjectType } from '../types';
 
@@ -33,6 +34,7 @@ interface SidebarProps {
   onUpdateObject: (id: string, updates: Partial<SceneObject>) => void;
   onDuplicateObject: (id: string) => void;
   onUpdateState: (updates: any) => void;
+  onOpenScriptEditor: (id: string) => void;
 }
 
 interface NodeInfo {
@@ -140,6 +142,7 @@ export function Sidebar({
   onUpdateObject,
   onDuplicateObject,
   onUpdateState,
+  onOpenScriptEditor,
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -287,6 +290,28 @@ export function Sidebar({
 
             <div className="tree-item-left" style={{ paddingLeft: `${depth * 14}px` }}>
               {getIcon()}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenScriptEditor(obj.id);
+                }}
+                className={`script-indicator-btn ${obj.script ? 'has-script' : ''}`}
+                title={obj.script ? 'Edit Attached Python Script' : 'Attach Python Script'}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '2px',
+                  marginRight: '6px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: obj.script ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                  transition: 'all var(--transition-fast)'
+                }}
+              >
+                <FileCode size={12} />
+              </button>
               {editingId === obj.id ? (
                 <input
                   type="text"

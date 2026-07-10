@@ -162,6 +162,7 @@ export function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [previewModeActive, setPreviewModeActive] = useState(false);
+  const [scriptEditObjectId, setScriptEditObjectId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -801,6 +802,7 @@ export function App() {
               onUpdateObject={handleUpdateObject}
               onDuplicateObject={handleDuplicateObject}
               onUpdateState={handleUpdateState}
+              onOpenScriptEditor={(id) => setScriptEditObjectId(id)}
             />
           </div>
         </div>
@@ -1096,6 +1098,193 @@ export function App() {
           <span>Exit Preview</span>
         </button>
       )}
+
+      {/* Floating Python Script Editor Modal overlay */}
+      {scriptEditObjectId && (() => {
+        const obj = objects.find(o => o.id === scriptEditObjectId);
+        if (!obj) return null;
+        return (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(9, 9, 11, 0.65)',
+            backdropFilter: 'blur(4px)'
+          }}>
+            <div style={{
+              width: '420px',
+              background: 'rgba(24, 24, 27, 0.95)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: '8px',
+              boxShadow: 'var(--shadow-lg)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}>
+              {/* Header */}
+              <div style={{
+                padding: '12px 16px',
+                borderBottom: '1px solid var(--border-light)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'rgba(0,0,0,0.15)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileCode size={14} style={{ color: 'var(--accent)' }} />
+                  <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Python Driver: {obj.name}</span>
+                </div>
+                <button
+                  onClick={() => setScriptEditObjectId(null)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Description */}
+              <div style={{ padding: '8px 16px', background: 'rgba(0,0,0,0.05)' }}>
+                <p style={{ fontSize: '10px', opacity: 0.5, margin: 0, lineHeight: '1.4' }}>
+                  Write Python to animate this object procedurally. Modifies <code>pos</code>, <code>rot</code>, and <code>scl</code> over <code>frame</code> and <code>time</code>.
+                </p>
+              </div>
+
+              {/* Editor Textarea */}
+              <div style={{ padding: '16px' }}>
+                <textarea
+                  value={obj.script || ''}
+                  onChange={(e) => handleUpdateObject(obj.id, { script: e.target.value })}
+                  placeholder="# Example:# import math# pos[1] = math.sin(frame * 0.15) * 2# rot[1] = frame * 2"
+                  style={{
+                    width: '100%',
+                    height: '180px',
+                    background: 'rgba(0, 0, 0, 0.25)',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: '4px',
+                    padding: '8px',
+                    color: '#38bdf8',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                    outline: 'none',
+                    resize: 'none'
+                  }}
+                />
+
+                {/* Presets Row */}
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '10px' }}>
+                  <span style={{ fontSize: '10px', opacity: 0.5, alignSelf: 'center', marginRight: '4px' }}>Presets:</span>
+                  <button
+                    onClick={() => {
+                      const code = `# Floating hover (Sine wave)\nimport math\npos[1] = math.sin(frame * 0.15) * 1.5 + 1.0`;
+                      handleUpdateObject(obj.id, { script: code });
+                    }}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--border-light)',
+                      color: 'var(--text-secondary)',
+                      fontSize: '9px',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Hover
+                  </button>
+                  <button
+                    onClick={() => {
+                      const code = `# Constantly spin\nrot[1] = (frame * 3.0) % 360`;
+                      handleUpdateObject(obj.id, { script: code });
+                    }}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--border-light)',
+                      color: 'var(--text-secondary)',
+                      fontSize: '9px',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Spin
+                  </button>
+                  <button
+                    onClick={() => {
+                      const code = `# Pulsing scale\nimport math\ns = 1.0 + math.sin(frame * 0.2) * 0.3\nscl[0] = s\nscl[1] = s\nscl[2] = s`;
+                      handleUpdateObject(obj.id, { script: code });
+                    }}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--border-light)',
+                      color: 'var(--text-secondary)',
+                      fontSize: '9px',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Pulse
+                  </button>
+                  {obj.script && (
+                    <button
+                      onClick={() => {
+                        handleUpdateObject(obj.id, { script: '' });
+                      }}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: 'rgb(239, 68, 68)',
+                        fontSize: '9px',
+                        padding: '2px 8px',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        marginLeft: 'auto'
+                      }}
+                    >
+                      Clear Script
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div style={{
+                padding: '12px 16px',
+                borderTop: '1px solid var(--border-light)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '8px',
+                background: 'rgba(0,0,0,0.1)'
+              }}>
+                <button
+                  onClick={() => setScriptEditObjectId(null)}
+                  style={{
+                    background: 'var(--accent)',
+                    border: 'none',
+                    color: '#000',
+                    fontWeight: 'bold',
+                    fontSize: '11px',
+                    padding: '6px 16px',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
