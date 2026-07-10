@@ -158,7 +158,7 @@ export function Sidebar({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [hierarchySearch, setHierarchySearch] = useState('');
-  const [sidebarView, setSidebarView] = useState<'hierarchy' | 'library' | 'creator' | 'environment'>('hierarchy');
+  const [sidebarView, setSidebarView] = useState<'hierarchy' | 'library' | 'creator' | 'project' | 'environment'>('hierarchy');
 
   // Node Spawner State
   const [searchQuery, setSearchQuery] = useState('');
@@ -414,6 +414,7 @@ export function Sidebar({
           {sidebarView === 'hierarchy' && 'Scene Outliner'}
           {sidebarView === 'library' && 'Spawn Library'}
           {sidebarView === 'creator' && 'Node Configuration'}
+          {sidebarView === 'project' && 'Project Assets'}
           {sidebarView === 'environment' && 'World Settings'}
         </span>
       </div>
@@ -424,12 +425,12 @@ export function Sidebar({
           onClick={() => setSidebarView('hierarchy')}
           style={{
             flex: 1,
-            padding: '8px 4px',
+            padding: '8px 2px',
             background: sidebarView === 'hierarchy' ? 'rgba(0, 240, 255, 0.1)' : 'none',
             border: 'none',
             borderBottom: sidebarView === 'hierarchy' ? '2px solid rgb(0, 240, 255)' : '2px solid transparent',
             color: sidebarView === 'hierarchy' ? 'var(--text-main)' : 'var(--text-secondary)',
-            fontSize: '11px',
+            fontSize: '10px',
             fontWeight: 'bold',
             cursor: 'pointer',
             textAlign: 'center'
@@ -441,12 +442,12 @@ export function Sidebar({
           onClick={() => setSidebarView('library')}
           style={{
             flex: 1,
-            padding: '8px 4px',
+            padding: '8px 2px',
             background: sidebarView === 'library' || sidebarView === 'creator' ? 'rgba(0, 240, 255, 0.1)' : 'none',
             border: 'none',
             borderBottom: sidebarView === 'library' || sidebarView === 'creator' ? '2px solid rgb(0, 240, 255)' : '2px solid transparent',
             color: sidebarView === 'library' || sidebarView === 'creator' ? 'var(--text-main)' : 'var(--text-secondary)',
-            fontSize: '11px',
+            fontSize: '10px',
             fontWeight: 'bold',
             cursor: 'pointer',
             textAlign: 'center'
@@ -455,15 +456,32 @@ export function Sidebar({
           Spawner
         </button>
         <button
+          onClick={() => setSidebarView('project')}
+          style={{
+            flex: 1,
+            padding: '8px 2px',
+            background: sidebarView === 'project' ? 'rgba(0, 240, 255, 0.1)' : 'none',
+            border: 'none',
+            borderBottom: sidebarView === 'project' ? '2px solid rgb(0, 240, 255)' : '2px solid transparent',
+            color: sidebarView === 'project' ? 'var(--text-main)' : 'var(--text-secondary)',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            textAlign: 'center'
+          }}
+        >
+          Project
+        </button>
+        <button
           onClick={() => setSidebarView('environment')}
           style={{
             flex: 1,
-            padding: '8px 4px',
+            padding: '8px 2px',
             background: sidebarView === 'environment' ? 'rgba(0, 240, 255, 0.1)' : 'none',
             border: 'none',
             borderBottom: sidebarView === 'environment' ? '2px solid rgb(0, 240, 255)' : '2px solid transparent',
             color: sidebarView === 'environment' ? 'var(--text-main)' : 'var(--text-secondary)',
-            fontSize: '11px',
+            fontSize: '10px',
             fontWeight: 'bold',
             cursor: 'pointer',
             textAlign: 'center'
@@ -476,88 +494,6 @@ export function Sidebar({
       <div className="sidebar-content">
         {sidebarView === 'hierarchy' && (
           <div className="hierarchy-tree">
-            {/* Scenes Management Section */}
-            <div style={{
-              padding: '0 8px 12px 8px',
-              borderBottom: '1px solid var(--border-light)',
-              marginBottom: '12px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Scenes</span>
-                <button
-                  onClick={() => {
-                    const name = prompt("Enter new scene name:");
-                    if (name && name.trim()) {
-                      onAddScene?.(name.trim());
-                    }
-                  }}
-                  title="Create New Scene"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--accent)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '2px'
-                  }}
-                >
-                  <Plus size={14} />
-                </button>
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {projectScenes.map((sc) => {
-                  const isOpen = openTabs.some(t => t.id === `scene-${sc.id}`);
-                  return (
-                    <div
-                      key={sc.id}
-                      onClick={() => onOpenSceneTab?.(sc.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '4px 6px',
-                        borderRadius: '4px',
-                        background: 'rgba(255, 255, 255, 0.02)',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                        cursor: 'pointer',
-                        fontSize: '11px',
-                        color: isOpen ? 'var(--text-main)' : 'var(--text-muted)'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Smartphone size={10} style={{ color: isOpen ? 'var(--accent)' : 'inherit' }} />
-                        <span>{sc.name}</span>
-                      </div>
-                      
-                      {sc.id !== 'default' && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Delete scene "${sc.name}"?`)) {
-                              onDeleteScene?.(sc.id);
-                            }
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--text-muted)',
-                            cursor: 'pointer',
-                            padding: '2px',
-                            display: 'flex',
-                            alignItems: 'center'
-                          }}
-                        >
-                          <Trash2 size={10} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
             <h3 className="group-title">Scene Nodes (Double-click to rename)</h3>
             <div className="hierarchy-search-bar" style={{ padding: '4px 8px', marginBottom: '8px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
               <Search size={12} style={{ opacity: 0.5, flexShrink: 0 }} />
@@ -678,6 +614,170 @@ export function Sidebar({
                   <Plus size={14} />
                   <span>Add Node...</span>
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {sidebarView === 'project' && (
+          <div className="project-assets-panel" style={{
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px'
+          }}>
+            {/* Scenes section */}
+            <div style={{
+              paddingBottom: '16px',
+              borderBottom: '1px solid var(--border-light)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Scenes</span>
+                <button
+                  onClick={() => {
+                    const name = prompt("Enter new scene name:");
+                    if (name && name.trim()) {
+                      onAddScene?.(name.trim());
+                    }
+                  }}
+                  title="Create New Scene"
+                  style={{
+                    background: 'rgba(6, 182, 212, 0.15)',
+                    border: '1px solid rgb(6, 182, 212)',
+                    color: 'rgb(34, 211, 238)',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px 6px',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    gap: '2px'
+                  }}
+                >
+                  <Plus size={12} />
+                  <span>New</span>
+                </button>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {projectScenes.map((sc) => {
+                  const isOpen = openTabs.some(t => t.id === `scene-${sc.id}`);
+                  return (
+                    <div
+                      key={sc.id}
+                      onClick={() => onOpenSceneTab?.(sc.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        background: isOpen ? 'rgba(6, 182, 212, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                        border: isOpen ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid rgba(255, 255, 255, 0.05)',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        color: isOpen ? '#fff' : 'var(--text-secondary)',
+                        transition: 'all 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isOpen) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isOpen) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Smartphone size={12} style={{ color: isOpen ? 'var(--accent)' : 'inherit' }} />
+                        <span style={{ fontWeight: isOpen ? 'bold' : 'normal' }}>{sc.name}</span>
+                      </div>
+                      
+                      {sc.id !== 'default' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete scene "${sc.name}"?`)) {
+                              onDeleteScene?.(sc.id);
+                            }
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Scripts section */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Python Scripts</span>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {objects.filter(o => o.scriptName).length === 0 ? (
+                  <div style={{
+                    fontSize: '10px',
+                    color: 'var(--text-muted)',
+                    fontStyle: 'italic',
+                    padding: '12px',
+                    textAlign: 'center',
+                    background: 'rgba(255,255,255,0.01)',
+                    borderRadius: '6px',
+                    border: '1px dashed rgba(255,255,255,0.05)'
+                  }}>
+                    No Python scripts attached. Use the code icon on Outliner nodes to attach scripts.
+                  </div>
+                ) : (
+                  objects
+                    .filter(o => o.scriptName)
+                    .map((obj) => {
+                      const tabId = `script-${obj.id}`;
+                      const isOpen = openTabs.some(t => t.id === tabId);
+                      return (
+                        <div
+                          key={obj.id}
+                          onClick={() => onOpenScriptEditor(obj.id)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            background: isOpen ? 'rgba(6, 182, 212, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                            border: isOpen ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid rgba(255, 255, 255, 0.05)',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            color: isOpen ? '#fff' : 'var(--text-secondary)',
+                            transition: 'all 0.15s'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isOpen) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isOpen) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FileCode size={12} style={{ color: isOpen ? 'var(--accent)' : 'inherit' }} />
+                            <span style={{ fontWeight: isOpen ? 'bold' : 'normal' }}>{obj.scriptName}.py</span>
+                          </div>
+                          <span style={{ fontSize: '9px', opacity: 0.4 }}>({obj.name})</span>
+                        </div>
+                      );
+                    })
+                )}
               </div>
             </div>
           </div>
