@@ -2099,6 +2099,7 @@
   pointer-events: none !important;
   z-index: 5 !important;
   display: flex !important;
+  overflow: hidden !important;
   transition: width var(--transition-medium), visibility var(--transition-medium) !important;
 }
 

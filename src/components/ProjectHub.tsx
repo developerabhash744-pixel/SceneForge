@@ -288,7 +288,7 @@ export function ProjectHub({ onLoadProject, activeProjectId, onBackToEditor }: P
         fps: 24,
         loop: true,
         autoKeyframe: true,
-        transformMode: 'select',
+        transformMode: 'translate',
         snapEnabled: false,
         snapTranslation: 0.5,
         snapRotation: 15,
