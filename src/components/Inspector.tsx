@@ -202,6 +202,30 @@ export function Inspector({
             <Copy size={14} />
           </button>
         )}
+        <button
+          onClick={() => {
+            if (confirm("Are you sure you want to clear all keyframes for this object?")) {
+              onUpdateObject(object.id, { tracks: [] });
+            }
+          }}
+          title="Clear All Keyframes on Object"
+          style={{
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: 'rgb(239, 68, 68)',
+            fontSize: '9px',
+            padding: '2px 6px',
+            borderRadius: '3px',
+            cursor: 'pointer',
+            marginLeft: '4px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          <Trash2 size={10} />
+          <span>Clear Keys</span>
+        </button>
       </div>
 
       <div className="inspector-scroll">

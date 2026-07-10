@@ -28,11 +28,16 @@ interface ThreeViewportProps {
   measureMode: boolean;
   gizmoSize: number;
   currentFrame: number;
+  startFrame: number;
+  endFrame: number;
   isPlaying: boolean;
   fps: number;
   loop: boolean;
   cameraPreset: EditorState['cameraPreset'];
   previewMode: boolean;
+  playbackSpeed?: number;
+  skyboxTint?: string;
+  cameraOrbitSpeed?: number;
   onSelectObject: (id: string | null) => void;
   onUpdateObjectTransform: (
     id: string,
@@ -62,11 +67,16 @@ export function ThreeViewport({
   measureMode,
   gizmoSize,
   currentFrame,
+  startFrame,
+  endFrame,
   isPlaying,
   fps,
   loop,
   cameraPreset,
   previewMode,
+  playbackSpeed = 1.0,
+  skyboxTint = '#ffffff',
+  cameraOrbitSpeed = 1.0,
   onSelectObject,
   onUpdateObjectTransform,
   onFrameChange,
@@ -117,6 +127,9 @@ export function ThreeViewport({
   const gridVisibleRef = useRef(gridVisible);
   const measureModeRef = useRef(measureMode);
   const gizmoSizeRef = useRef(gizmoSize);
+  const startFrameRef = useRef(startFrame);
+  const endFrameRef = useRef(endFrame);
+  const playbackSpeedRef = useRef(playbackSpeed);
 
   useEffect(() => {
     objectsRef.current = objects;
@@ -137,10 +150,15 @@ export function ThreeViewport({
     gridVisibleRef.current = gridVisible;
     measureModeRef.current = measureMode;
     gizmoSizeRef.current = gizmoSize;
+    startFrameRef.current = startFrame;
+    endFrameRef.current = endFrame;
+    playbackSpeedRef.current = playbackSpeed;
   }, [
     objects,
     selectedId,
     currentFrame,
+    startFrame,
+    endFrame,
     isPlaying,
     fps,
     loop,
@@ -156,6 +174,7 @@ export function ThreeViewport({
     gridVisible,
     measureMode,
     gizmoSize,
+    playbackSpeed,
   ]);
 
   // Handle Preview Mode / FPS Mode transitions (detaching transform gizmos and disabling OrbitControls)
@@ -172,8 +191,11 @@ export function ThreeViewport({
     } else {
       if (selectedIdRef.current) {
         const activeObj = threeObjects.current.get(selectedIdRef.current);
-        if (activeObj && activeObj.visible && transformMode !== 'select') {
+        const isLocked = objectsRef.current.find((o) => o.id === selectedIdRef.current)?.locked;
+        if (activeObj && activeObj.visible && !isLocked && transformMode !== 'select') {
           transformControls.attach(activeObj);
+        } else {
+          transformControls.detach();
         }
       }
     }
@@ -483,7 +505,7 @@ export function ThreeViewport({
       requestAnimationFrame(animate);
 
       const time = performance.now();
-      const delta = (time - lastTime) / 1000;
+      const delta = ((time - lastTime) / 1000) * playbackSpeedRef.current;
       lastTime = time;
 
       const scene = sceneRef.current;
@@ -501,11 +523,11 @@ export function ThreeViewport({
         if (accumulatedTime >= frameInterval) {
           accumulatedTime = accumulatedTime % frameInterval;
           const nextFrame = currentFrameRef.current + 1;
-          const totalFrames = 120; // Default limit, can be customized
+          const totalFrames = endFrameRef.current;
 
           if (nextFrame > totalFrames) {
             if (loopRef.current) {
-              onFrameChange(0);
+              onFrameChange(startFrameRef.current);
             } else {
               // Stop playing
               isPlayingRef.current = false;
@@ -909,8 +931,11 @@ export function ThreeViewport({
 
       if (transformControls && selectedIdRef.current) {
         const activeObj = threeObjects.current.get(selectedIdRef.current);
-        if (activeObj && activeObj.visible && transformMode !== 'select') {
+        const isLocked = objectsRef.current.find((o) => o.id === selectedIdRef.current)?.locked;
+        if (activeObj && activeObj.visible && !isLocked && transformMode !== 'select') {
           transformControls.attach(activeObj);
+        } else {
+          transformControls.detach();
         }
       }
     };
@@ -1023,6 +1048,15 @@ export function ThreeViewport({
     }
   }, [snapEnabled, snapTranslation, snapRotation, snapScale, transformSpace, gizmoSize]);
 
+  // Synchronize Camera Orbit Speed settings
+  useEffect(() => {
+    const orbitControls = orbitControlsRef.current;
+    if (orbitControls) {
+      orbitControls.rotateSpeed = cameraOrbitSpeed;
+      orbitControls.zoomSpeed = cameraOrbitSpeed;
+    }
+  }, [cameraOrbitSpeed]);
+
   // Synchronize Fog state
   useEffect(() => {
     const scene = sceneRef.current;
@@ -1043,7 +1077,7 @@ export function ThreeViewport({
     }
   }, [gridVisible]);
 
-  // Synchronize Skybox Preset backdrop
+  // Synchronize Skybox Preset backdrop and tint
   useEffect(() => {
     const scene = sceneRef.current;
     const renderer = rendererRef.current;
@@ -1054,9 +1088,13 @@ export function ThreeViewport({
     else if (skyboxPreset === 'space') bgColor = 0x020205;
     else if (skyboxPreset === 'stormy') bgColor = 0x181024;
 
-    scene.background = new THREE.Color(bgColor);
-    renderer.setClearColor(bgColor, 1);
-  }, [skyboxPreset]);
+    const baseColor = new THREE.Color(bgColor);
+    const tintColor = new THREE.Color(skyboxTint || '#ffffff');
+    const finalColor = baseColor.multiply(tintColor);
+
+    scene.background = finalColor;
+    renderer.setClearColor(finalColor, 1);
+  }, [skyboxPreset, skyboxTint]);
 
   useEffect(() => {
     if (!measureMode) {
@@ -1524,8 +1562,9 @@ export function ThreeViewport({
     if (transformControls) {
       if (selectedId) {
         const activeObj = threeObjects.current.get(selectedId);
-        // Only attach if it exists, is visible, and the mode is not 'select'
-        if (activeObj && activeObj.visible && transformMode !== 'select') {
+        // Only attach if it exists, is visible, is not locked, and the mode is not 'select'
+        const isLocked = objects.find((o) => o.id === selectedId)?.locked;
+        if (activeObj && activeObj.visible && !isLocked && transformMode !== 'select') {
           transformControls.attach(activeObj);
         } else {
           transformControls.detach();

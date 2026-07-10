@@ -866,6 +866,25 @@ export function Sidebar({
               </select>
             </div>
 
+            {/* Skybox Tint Color Picker */}
+            <div className="property-row inline" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <span style={{ fontSize: '12px' }}>Skybox Tint</span>
+              <input
+                type="color"
+                value={editorState.skyboxTint || '#ffffff'}
+                onChange={(e) => onUpdateState({ skyboxTint: e.target.value })}
+                style={{
+                  width: '32px',
+                  height: '20px',
+                  padding: '0',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  background: 'none'
+                }}
+              />
+            </div>
+
             <h3 className="group-title">Camera & Viewport</h3>
 
             {/* Viewport scaling mode */}
@@ -915,6 +934,23 @@ export function Sidebar({
                 step="0.05"
                 value={editorState.gizmoSize}
                 onChange={(e) => onUpdateState({ gizmoSize: parseFloat(e.target.value) })}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            {/* Camera Orbit Speed */}
+            <div className="property-row slider-row" style={{ marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
+                <span>Camera Orbit Speed</span>
+                <span>{(editorState.cameraOrbitSpeed ?? 1.0).toFixed(1)}x</span>
+              </div>
+              <input
+                type="range"
+                min="0.2"
+                max="3.0"
+                step="0.1"
+                value={editorState.cameraOrbitSpeed ?? 1.0}
+                onChange={(e) => onUpdateState({ cameraOrbitSpeed: parseFloat(e.target.value) })}
                 style={{ width: '100%' }}
               />
             </div>

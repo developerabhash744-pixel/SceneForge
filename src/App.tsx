@@ -978,6 +978,30 @@ export function App() {
             </div>
           </div>
 
+          {/* Bottom-Left: Resolution & UI Scale HUD Overlay */}
+          <div style={{
+            position: 'absolute',
+            bottom: '12px',
+            left: '12px',
+            background: 'rgba(9, 9, 11, 0.75)',
+            backdropFilter: 'blur(4px)',
+            border: '1px solid var(--border-light)',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            pointerEvents: 'none',
+            zIndex: 10,
+            fontSize: '9px',
+            fontFamily: 'monospace',
+            color: 'var(--text-muted)'
+          }}>
+            <span style={{ color: 'var(--accent)' }}>SCALE: {viewportMode.toUpperCase()}</span>
+            <span style={{ opacity: 0.3 }}>|</span>
+            <span>RES: {viewportMode === 'tablet' ? '1024 x 768' : 'AUTO'}</span>
+          </div>
+
           {/* ThreeJS viewport component */}
           <ThreeViewport
             objects={objects}
@@ -998,11 +1022,16 @@ export function App() {
             measureMode={editorState.measureMode}
             gizmoSize={editorState.gizmoSize}
             currentFrame={editorState.currentFrame}
+            startFrame={editorState.startFrame}
+            endFrame={editorState.endFrame}
             isPlaying={editorState.isPlaying}
             fps={editorState.fps}
             loop={editorState.loop}
             cameraPreset={editorState.cameraPreset}
             previewMode={previewModeActive}
+            playbackSpeed={editorState.playbackSpeed ?? 1.0}
+            skyboxTint={editorState.skyboxTint || '#ffffff'}
+            cameraOrbitSpeed={editorState.cameraOrbitSpeed ?? 1.0}
             onSelectObject={handleSelectObject}
             onUpdateObjectTransform={handleUpdateObjectTransform}
             onFrameChange={(frame) => handleUpdateState({ currentFrame: frame })}
@@ -1050,6 +1079,7 @@ export function App() {
         loop={editorState.loop}
         autoKeyframe={editorState.autoKeyframe}
         expanded={timelineExpanded}
+        playbackSpeed={editorState.playbackSpeed ?? 1.0}
         onToggleExpand={setTimelineExpanded}
         onUpdateState={handleUpdateState}
         onUpdateObject={handleUpdateObject}

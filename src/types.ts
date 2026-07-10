@@ -86,6 +86,10 @@ export interface EditorState {
   gridVisible: boolean;
   measureMode: boolean;
   gizmoSize: number;
+  viewportMode?: 'mobile' | 'tablet';
+  playbackSpeed?: number;
+  skyboxTint?: string;
+  cameraOrbitSpeed?: number;
 }
 
 export interface Project {

@@ -1,15 +1,17 @@
 import { useRef, useState, useEffect } from 'react';
 import {
-  Play,
-  Pause,
-  Square,
-  RotateCcw,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  ChevronDown,
-  Trash2,
-  Zap,
+   Play,
+   Pause,
+   Square,
+   RotateCcw,
+   ChevronLeft,
+   ChevronRight,
+   ChevronUp,
+   ChevronDown,
+   Trash2,
+   Zap,
+   SkipBack,
+   SkipForward,
 } from 'lucide-react';
 import type { SceneObject, AnimationTrack, Keyframe } from '../types';
 
@@ -24,6 +26,7 @@ interface TimelineProps {
   loop: boolean;
   autoKeyframe: boolean;
   expanded: boolean;
+  playbackSpeed?: number;
   onToggleExpand: (val: boolean) => void;
   onUpdateState: (updates: {
     currentFrame?: number;
@@ -31,6 +34,8 @@ interface TimelineProps {
     fps?: number;
     loop?: boolean;
     autoKeyframe?: boolean;
+    endFrame?: number;
+    playbackSpeed?: number;
   }) => void;
   onUpdateObject: (id: string, updates: Partial<SceneObject>) => void;
 }
@@ -45,6 +50,7 @@ export function Timeline({
   loop,
   autoKeyframe,
   expanded,
+  playbackSpeed = 1.0,
   onToggleExpand,
   onUpdateState,
   onUpdateObject,
@@ -116,6 +122,26 @@ export function Timeline({
   const stopPlayback = () => onUpdateState({ isPlaying: false, currentFrame: startFrame });
   const nextFrame = () => onUpdateState({ currentFrame: Math.min(endFrame, currentFrame + 1) });
   const prevFrame = () => onUpdateState({ currentFrame: Math.max(startFrame, currentFrame - 1) });
+
+  const jumpToPrevKeyframe = () => {
+    if (!object) return;
+    const allFrames = object.tracks.flatMap((t) => t.keyframes.map((k) => k.frame));
+    const uniqueFrames = Array.from(new Set(allFrames)).sort((a, b) => b - a); // descending
+    const prev = uniqueFrames.find((f) => f < currentFrame);
+    if (prev !== undefined) {
+      onUpdateState({ currentFrame: prev });
+    }
+  };
+
+  const jumpToNextKeyframe = () => {
+    if (!object) return;
+    const allFrames = object.tracks.flatMap((t) => t.keyframes.map((k) => k.frame));
+    const uniqueFrames = Array.from(new Set(allFrames)).sort((a, b) => a - b); // ascending
+    const next = uniqueFrames.find((f) => f > currentFrame);
+    if (next !== undefined) {
+      onUpdateState({ currentFrame: next });
+    }
+  };
 
   // Keyframe Actions
   const handleKeyframeSelect = (
@@ -248,6 +274,9 @@ export function Timeline({
       <div className="timeline-controls-bar">
         {/* Playback group */}
         <div className="controls-group">
+          <button className="control-btn" onClick={jumpToPrevKeyframe} title="Jump to Prev Keyframe">
+            <SkipBack size={14} />
+          </button>
           <button className="control-btn" onClick={prevFrame} title="Previous Frame">
             <ChevronLeft size={16} />
           </button>
@@ -264,13 +293,37 @@ export function Timeline({
           <button className="control-btn" onClick={nextFrame} title="Next Frame">
             <ChevronRight size={16} />
           </button>
+          <button className="control-btn" onClick={jumpToNextKeyframe} title="Jump to Next Keyframe">
+            <SkipForward size={14} />
+          </button>
         </div>
 
         {/* Playhead position details */}
         <div className="controls-group frame-counter-display">
           <span className="current-frame-num">{currentFrame}</span>
           <span className="frame-divider">/</span>
-          <span className="total-frames-num">{endFrame}</span>
+          <input
+            type="number"
+            value={endFrame}
+            onChange={(e) => {
+              const val = parseInt(e.target.value);
+              if (!isNaN(val) && val > startFrame) {
+                onUpdateState({ endFrame: val });
+              }
+            }}
+            style={{
+              width: '40px',
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted)',
+              fontSize: '12px',
+              fontFamily: 'var(--font-mono)',
+              textAlign: 'center',
+              outline: 'none',
+              padding: '0'
+            }}
+            title="Change sequencer total duration frames"
+          />
         </div>
 
         {/* Autokey & Loop Toggles */}
@@ -295,7 +348,7 @@ export function Timeline({
 
         {/* FPS selector */}
         <div className="controls-group">
-          <span className="speed-label">Speed</span>
+          <span className="speed-label">FPS</span>
           <select
             value={fps}
             onChange={(e) => onUpdateState({ fps: parseInt(e.target.value) })}
@@ -305,6 +358,22 @@ export function Timeline({
             <option value={24}>24 FPS</option>
             <option value={30}>30 FPS</option>
             <option value={60}>60 FPS</option>
+          </select>
+        </div>
+
+        {/* Speed Multiplier selector */}
+        <div className="controls-group">
+          <span className="speed-label">Scale</span>
+          <select
+            value={playbackSpeed}
+            onChange={(e) => onUpdateState({ playbackSpeed: parseFloat(e.target.value) })}
+            className="fps-select"
+            style={{ width: '65px' }}
+          >
+            <option value={0.5}>0.5x</option>
+            <option value={1.0}>1.0x</option>
+            <option value={1.5}>1.5x</option>
+            <option value={2.0}>2.0x</option>
           </select>
         </div>
 
