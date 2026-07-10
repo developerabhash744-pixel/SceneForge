@@ -615,12 +615,20 @@ export function ThreeViewport({
           });
         }
 
-        // Evaluate custom Python Code Driver script
         if (obj.script && obj.script.trim() !== '') {
           try {
             let scriptEntry = compiledScriptCache.current.get(obj.id);
             if (!scriptEntry || scriptEntry.python !== obj.script) {
-              const jsCode = transpilePythonToJS(obj.script);
+              const transpiled = transpilePythonToJS(obj.script);
+              const jsCode = `
+                const lerp = (a, b, t) => a + (b - a) * t;
+                const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+                const map_range = (val, inMin, inMax, outMin, outMax) => outMin + (outMax - outMin) * (val - inMin) / (inMax - inMin);
+                const ease_in_quad = (t) => t * t;
+                const ease_out_quad = (t) => t * (2 - t);
+                const ease_in_out_quad = (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                ${transpiled}
+              `;
               const func = new Function('pos', 'rot', 'scl', 'frame', 'time', 'THREE', jsCode);
               scriptEntry = { python: obj.script, func };
               compiledScriptCache.current.set(obj.id, scriptEntry);

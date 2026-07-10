@@ -5,6 +5,9 @@ import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
 import { Timeline } from './components/Timeline';
 import { ProjectHub } from './components/ProjectHub';
+import CodeMirror from '@uiw/react-codemirror';
+import { python } from '@codemirror/lang-python';
+import { autocompletion } from '@codemirror/autocomplete';
 
 interface EditorTab {
   id: string;
@@ -30,6 +33,137 @@ import {
   Eye,
 } from 'lucide-react';
 import './App.css';
+
+const sceneForgeCompletions = [
+  // --- Core State Variables ---
+  { label: 'pos', type: 'variable', info: 'Position vector [x, y, z]. Modifying pos[1] shifts vertical height.' },
+  { label: 'rot', type: 'variable', info: 'Rotation vector [x, y, z] in degrees (pitch, yaw, roll). e.g. rot[1] = frame * 2' },
+  { label: 'scl', type: 'variable', info: 'Scale vector [x, y, z]. Default is [1.0, 1.0, 1.0].' },
+  { label: 'frame', type: 'keyword', info: 'Current playhead frame (integer, starting at 0).' },
+  { label: 'time', type: 'keyword', info: 'Current animation time in seconds (float, playhead time).' },
+  { label: 'THREE', type: 'namespace', info: 'Raw Three.js library reference for advanced math and WebGL objects.' },
+
+  // --- Python Math Functions & Constants ---
+  { label: 'math.sin', type: 'function', info: 'math.sin(x) -> Returns sine of angle x (in radians).' },
+  { label: 'math.cos', type: 'function', info: 'math.cos(x) -> Returns cosine of angle x (in radians).' },
+  { label: 'math.tan', type: 'function', info: 'math.tan(x) -> Returns tangent of angle x (in radians).' },
+  { label: 'math.asin', type: 'function', info: 'math.asin(x) -> Returns arc sine of x (in radians).' },
+  { label: 'math.acos', type: 'function', info: 'math.acos(x) -> Returns arc cosine of x (in radians).' },
+  { label: 'math.atan', type: 'function', info: 'math.atan(x) -> Returns arc tangent of x (in radians).' },
+  { label: 'math.atan2', type: 'function', info: 'math.atan2(y, x) -> Returns arc tangent of y/x in radians.' },
+  { label: 'math.pi', type: 'constant', info: 'Mathematical constant pi (approx. 3.14159).' },
+  { label: 'math.e', type: 'constant', info: 'Mathematical constant e (approx. 2.71828).' },
+  { label: 'math.tau', type: 'constant', info: 'Mathematical constant tau (2 * pi, approx. 6.28318).' },
+  { label: 'math.sqrt', type: 'function', info: 'math.sqrt(x) -> Returns square root of x.' },
+  { label: 'math.pow', type: 'function', info: 'math.pow(x, y) -> Returns x raised to the power of y.' },
+  { label: 'math.log', type: 'function', info: 'math.log(x, base=e) -> Returns logarithm of x to base e.' },
+  { label: 'math.exp', type: 'function', info: 'math.exp(x) -> Returns e raised to the power of x.' },
+  { label: 'math.floor', type: 'function', info: 'math.floor(x) -> Returns floor of x.' },
+  { label: 'math.ceil', type: 'function', info: 'math.ceil(x) -> Returns ceil of x.' },
+  { label: 'math.round', type: 'function', info: 'math.round(x) -> Returns nearest integer to x.' },
+  { label: 'math.degrees', type: 'function', info: 'math.degrees(x) -> Converts angle x from radians to degrees.' },
+  { label: 'math.radians', type: 'function', info: 'math.radians(x) -> Converts angle x from degrees to radians.' },
+  { label: 'math.abs', type: 'function', info: 'math.abs(x) -> Returns absolute value of x.' },
+  { label: 'math.fabs', type: 'function', info: 'math.fabs(x) -> Returns float absolute value of x.' },
+  { label: 'math.factorial', type: 'function', info: 'math.factorial(n) -> Returns n! (factorial).' },
+  { label: 'math.fmod', type: 'function', info: 'math.fmod(x, y) -> Returns float remainder of x/y.' },
+  { label: 'math.gcd', type: 'function', info: 'math.gcd(x, y) -> Returns greatest common divisor of x and y.' },
+  { label: 'math.hypot', type: 'function', info: 'math.hypot(*coordinates) -> Returns Euclidean norm of coordinates.' },
+  { label: 'math.sinh', type: 'function', info: 'math.sinh(x) -> Returns hyperbolic sine of x.' },
+  { label: 'math.cosh', type: 'function', info: 'math.cosh(x) -> Returns hyperbolic cosine of x.' },
+  { label: 'math.tanh', type: 'function', info: 'math.tanh(x) -> Returns hyperbolic tangent of x.' },
+  { label: 'math.isinf', type: 'function', info: 'math.isinf(x) -> Returns True if x is infinity.' },
+  { label: 'math.isnan', type: 'function', info: 'math.isnan(x) -> Returns True if x is NaN.' },
+  { label: 'math.asinh', type: 'function', info: 'math.asinh(x) -> Returns inverse hyperbolic sine of x.' },
+  { label: 'math.acosh', type: 'function', info: 'math.acosh(x) -> Returns inverse hyperbolic cosine of x.' },
+  { label: 'math.atanh', type: 'function', info: 'math.atanh(x) -> Returns inverse hyperbolic tangent of x.' },
+  { label: 'math.copysign', type: 'function', info: 'math.copysign(x, y) -> Returns x with the sign of y.' },
+  { label: 'math.erf', type: 'function', info: 'math.erf(x) -> Returns the error function of x.' },
+  { label: 'math.erfc', type: 'function', info: 'math.erfc(x) -> Returns the complementary error function of x.' },
+  { label: 'math.gamma', type: 'function', info: 'math.gamma(x) -> Returns the Gamma function of x.' },
+  { label: 'math.lgamma', type: 'function', info: 'math.lgamma(x) -> Returns natural log of absolute value of Gamma function.' },
+
+  // --- Animation Helper Functions ---
+  { label: 'lerp', type: 'function', info: 'lerp(a, b, t) -> Linearly interpolates between a and b by fraction t.' },
+  { label: 'clamp', type: 'function', info: 'clamp(val, min_val, max_val) -> Constrains val between min and max bounds.' },
+  { label: 'map_range', type: 'function', info: 'map_range(val, inMin, inMax, outMin, outMax) -> Maps value to a target range.' },
+  { label: 'ease_in_quad', type: 'function', info: 'ease_in_quad(t) -> Starts slow, accelerates. Quadratic ease-in.' },
+  { label: 'ease_out_quad', type: 'function', info: 'ease_out_quad(t) -> Starts fast, decelerates. Quadratic ease-out.' },
+  { label: 'ease_in_out_quad', type: 'function', info: 'ease_in_out_quad(t) -> Accelerates then decelerates. Quadratic ease-in-out.' },
+
+  // --- Coordinate Shortcuts ---
+  { label: 'pos[0]', type: 'variable', info: 'X Coordinate of current object position.' },
+  { label: 'pos[1]', type: 'variable', info: 'Y Coordinate of current object position (Vertical height).' },
+  { label: 'pos[2]', type: 'variable', info: 'Z Coordinate of current object position.' },
+  { label: 'rot[0]', type: 'variable', info: 'X axis rotation (Pitch) in degrees.' },
+  { label: 'rot[1]', type: 'variable', info: 'Y axis rotation (Yaw) in degrees.' },
+  { label: 'rot[2]', type: 'variable', info: 'Z axis rotation (Roll) in degrees.' },
+  { label: 'scl[0]', type: 'variable', info: 'Scale factor along X axis.' },
+  { label: 'scl[1]', type: 'variable', info: 'Scale factor along Y axis.' },
+  { label: 'scl[2]', type: 'variable', info: 'Scale factor along Z axis.' },
+
+  // --- ThreeJS Vectors & Helpers ---
+  { label: 'THREE.Vector2', type: 'class', info: 'THREE.Vector2(x, y) -> Represents 2D vectors.' },
+  { label: 'THREE.Vector3', type: 'class', info: 'THREE.Vector3(x, y, z) -> Represents 3D vectors.' },
+  { label: 'THREE.Euler', type: 'class', info: 'THREE.Euler(x, y, z, order) -> Represents Euler angles for rotation.' },
+  { label: 'THREE.Quaternion', type: 'class', info: 'THREE.Quaternion(x, y, z, w) -> Represents quaternions for rotation.' },
+  { label: 'THREE.Color', type: 'class', info: 'THREE.Color(color) -> Base class defining RGB/Hex colors.' },
+  { label: 'THREE.Matrix4', type: 'class', info: 'THREE.Matrix4() -> Represents a 4x4 matrix.' },
+  { label: 'THREE.Box3', type: 'class', info: 'THREE.Box3(min, max) -> Represents an axis-aligned bounding box.' },
+  { label: 'THREE.Sphere', type: 'class', info: 'THREE.Sphere(center, radius) -> Represents a bounding sphere.' },
+  { label: 'THREE.MathUtils.lerp', type: 'function', info: 'THREE.MathUtils.lerp(x, y, t) -> Linear interpolation.' },
+  { label: 'THREE.MathUtils.clamp', type: 'function', info: 'THREE.MathUtils.clamp(val, min, max) -> Clamps value.' },
+  { label: 'THREE.MathUtils.randFloat', type: 'function', info: 'THREE.MathUtils.randFloat(low, high) -> Returns random float.' },
+  { label: 'THREE.MathUtils.randFloatSpread', type: 'function', info: 'THREE.MathUtils.randFloatSpread(range) -> Spread random.' },
+  { label: 'THREE.MathUtils.degToRad', type: 'function', info: 'degToRad(deg) -> Converts degrees to radians.' },
+  { label: 'THREE.MathUtils.radToDeg', type: 'function', info: 'radToDeg(rad) -> Converts radians to degrees.' },
+
+  // --- Motion Constants & Variables ---
+  { label: 'sin_wave', type: 'variable', info: 'Variable placeholder: math.sin(frame * frequency) * amplitude' },
+  { label: 'cos_wave', type: 'variable', info: 'Variable placeholder: math.cos(frame * frequency) * amplitude' },
+  { label: 'frequency', type: 'variable', info: 'Animation cycle speed coefficient.' },
+  { label: 'amplitude', type: 'variable', info: 'Animation cycle peak deviation coefficient.' },
+  { label: 'phase', type: 'variable', info: 'Animation cycle horizontal offset coefficient.' },
+
+  // --- Animation Presets ---
+  { label: 'spin_y', type: 'snippet', info: 'Preset: rot[1] = (frame * 2.0) % 360  # Y-Axis Spin' },
+  { label: 'spin_x', type: 'snippet', info: 'Preset: rot[0] = (frame * 2.0) % 360  # X-Axis Spin' },
+  { label: 'spin_z', type: 'snippet', info: 'Preset: rot[2] = (frame * 2.0) % 360  # Z-Axis Spin' },
+  { label: 'bounce_y', type: 'snippet', info: 'Preset: pos[1] = math.abs(math.sin(frame * 0.1)) * 2.0  # Vertical bounce' },
+  { label: 'float_hover', type: 'snippet', info: 'Preset: pos[1] = math.sin(frame * 0.08) * 0.5 + 1.0  # Floating drift hover' },
+  { label: 'pulse_scale', type: 'snippet', info: 'Preset: s = 1.0 + math.sin(frame * 0.1) * 0.2; scl[0] = s; scl[1] = s; scl[2] = s  # Pulse' },
+  { label: 'orbit_motion', type: 'snippet', info: 'Preset: pos[0] = math.cos(frame * 0.05) * 4.0; pos[2] = math.sin(frame * 0.05) * 4.0  # Orbit path' },
+  { label: 'shake_random', type: 'snippet', info: 'Preset: pos[0] += (THREE.MathUtils.randFloatSpread(0.1)); pos[2] += (THREE.MathUtils.randFloatSpread(0.1))  # Shakiness' },
+  { label: 'circular_crawl', type: 'snippet', info: 'Preset: r = frame * 0.02; pos[0] = math.cos(frame * 0.1) * r; pos[2] = math.sin(frame * 0.1) * r  # Spiral' },
+  { label: 'flicker_effect', type: 'snippet', info: 'Preset: if frame % 4 == 0: scl[0] = 0.9 else: scl[0] = 1.0' },
+
+  // --- Python Control Statements ---
+  { label: 'if', type: 'keyword', info: 'Conditional block: if condition:' },
+  { label: 'elif', type: 'keyword', info: 'Conditional block branch: elif condition:' },
+  { label: 'else', type: 'keyword', info: 'Conditional block fallback: else:' },
+  { label: 'while', type: 'keyword', info: 'Loop block: while condition:' },
+  { label: 'for', type: 'keyword', info: 'Iteration block: for item in collection:' },
+  { label: 'in', type: 'keyword', info: 'Membership test operator.' },
+  { label: 'break', type: 'keyword', info: 'Exits the innermost loop immediately.' },
+  { label: 'continue', type: 'keyword', info: 'Skips to the next iteration of the loop.' },
+  { label: 'pass', type: 'keyword', info: 'Null statement. Acts as a placeholder.' },
+  { label: 'return', type: 'keyword', info: 'Exits function and returns a value.' },
+  { label: 'import', type: 'keyword', info: 'Imports modules/libraries.' },
+  { label: 'from', type: 'keyword', info: 'Imports specific attributes from a module.' },
+  { label: 'def', type: 'keyword', info: 'Declares a function: def name(args):' },
+  { label: 'class', type: 'keyword', info: 'Declares a class: class ClassName:' },
+  { label: 'global', type: 'keyword', info: 'Declares variables to have global scope.' }
+];
+
+function sceneForgeAutocompleteSource(context: any) {
+  let word = context.matchBefore(/\w*(\.\w*)?/);
+  if (!word || (word.from === word.to && !context.explicit)) return null;
+  return {
+    from: word.from,
+    options: sceneForgeCompletions,
+    filter: true
+  };
+}
 
 // Initial default scene objects
 const initialObjects: SceneObject[] = [
@@ -1110,23 +1244,25 @@ export function App() {
                       )}
                     </div>
                   </div>
-                  <textarea
+                  <CodeMirror
                     value={targetObj.script || ''}
-                    onChange={(e) => handleUpdateObject(targetObj.id, { script: e.target.value })}
-                    placeholder="# Write Python code here...# Example:# import math# pos[1] = math.sin(frame * 0.15) * 2"
+                    onChange={(val) => handleUpdateObject(targetObj.id, { script: val })}
+                    placeholder="# Write Python code here...&#10;# Example:&#10;# import math&#10;# pos[1] = math.sin(frame * 0.15) * 2"
+                    height="100%"
+                    theme="dark"
+                    extensions={[
+                      python(),
+                      autocompletion({ override: [sceneForgeAutocompleteSource] })
+                    ]}
                     style={{
                       flex: 1,
                       width: '100%',
                       background: 'rgba(0,0,0,0.4)',
                       border: '1px solid var(--border-light)',
                       borderRadius: '4px',
-                      padding: '12px',
-                      color: '#38bdf8',
                       fontSize: '12px',
                       fontFamily: 'monospace',
-                      outline: 'none',
-                      resize: 'none',
-                      lineHeight: '1.5'
+                      overflowY: 'auto'
                     }}
                   />
                 </div>
