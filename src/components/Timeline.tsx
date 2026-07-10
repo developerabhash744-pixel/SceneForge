@@ -239,7 +239,10 @@ export function Timeline({
   // Generate frame ticks for the timeline header
   const renderTicks = () => {
     const ticks = [];
-    const interval = totalFrames <= 60 ? 5 : 10;
+    let interval = 5;
+    if (totalFrames > 60 && totalFrames <= 200) interval = 10;
+    else if (totalFrames > 200 && totalFrames <= 500) interval = 20;
+    else if (totalFrames > 500) interval = 50;
     
     for (let f = startFrame; f <= endFrame; f++) {
       const leftPct = ((f - startFrame) / totalFrames) * 100;
@@ -416,44 +419,53 @@ export function Timeline({
             </div>
 
             {/* Right timeline grid column */}
-            <div className="dope-tracks-col">
-              {/* Timeline header for dragging and tick marks */}
-              <div
-                className="tracks-header-scrubber"
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-                ref={tracksContainerRef}
-              >
-                {renderTicks()}
-                {/* Draggable Playhead marker */}
+            <div className="dope-tracks-col" style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+              <div style={{
+                minWidth: '100%',
+                width: `${totalFrames * 12}px`,
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                position: 'relative'
+              }}>
+                {/* Timeline header for dragging and tick marks */}
                 <div
-                  className="playhead-marker"
-                  style={{ left: `${((currentFrame - startFrame) / totalFrames) * 100}%` }}
+                  className="tracks-header-scrubber"
+                  onMouseDown={handleMouseDown}
+                  onTouchStart={handleTouchStart}
+                  ref={tracksContainerRef}
                 >
-                  <div className="playhead-needle" />
-                </div>
-              </div>
-
-              {/* Dope sheet track rows */}
-              {object ? (
-                <div className="tracks-body-scroll">
-                  {/* Summary track containing all keyframes combined */}
-                  <div className="track-row object-summary-track">
-                    {activeTrackProps.map((prop) => renderKeyframes(prop))}
+                  {renderTicks()}
+                  {/* Draggable Playhead marker */}
+                  <div
+                    className="playhead-marker"
+                    style={{ left: `${((currentFrame - startFrame) / totalFrames) * 100}%` }}
+                  >
+                    <div className="playhead-needle" />
                   </div>
+                </div>
 
-                  {/* Sub-property tracks */}
-                  {activeTrackProps.map((prop) => (
-                    <div key={prop} className="track-row sub-property-track">
-                      {renderKeyframes(prop)}
+                {/* Dope sheet track rows */}
+                {object ? (
+                  <div className="tracks-body-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+                    {/* Summary track containing all keyframes combined */}
+                    <div className="track-row object-summary-track">
+                      {activeTrackProps.map((prop) => renderKeyframes(prop))}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="timeline-empty-message">
-                  No active animation tracks. Create keyframes in the inspector.
-                </div>
-              )}
+
+                    {/* Sub-property tracks */}
+                    {activeTrackProps.map((prop) => (
+                      <div key={prop} className="track-row sub-property-track">
+                        {renderKeyframes(prop)}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="timeline-empty-message">
+                    No active animation tracks. Create keyframes in the inspector.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

@@ -2092,22 +2092,16 @@
 .viewport-tablet .drawer-container.left-drawer,
 .viewport-tablet .drawer-container.right-drawer {
   position: relative !important;
-  width: 0px !important;
+  width: 250px !important;
   flex-shrink: 0 !important;
   height: 100% !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
   z-index: 5 !important;
-  display: flex !important;
-  overflow: hidden !important;
-  transition: width var(--transition-medium), visibility var(--transition-medium) !important;
+  display: none !important;
 }
 
 .viewport-tablet .drawer-container.left-drawer.open,
 .viewport-tablet .drawer-container.right-drawer.open {
-  width: 250px !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
+  display: flex !important;
 }
 
 .viewport-tablet .drawer-container.left-drawer .drawer-sheet,
