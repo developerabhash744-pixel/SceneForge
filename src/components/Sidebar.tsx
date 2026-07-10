@@ -21,6 +21,7 @@ import {
   Music,
   Copy,
   FileCode,
+  Smartphone,
 } from 'lucide-react';
 import type { SceneObject, ObjectType } from '../types';
 
@@ -35,6 +36,11 @@ interface SidebarProps {
   onDuplicateObject: (id: string) => void;
   onUpdateState: (updates: any) => void;
   onOpenScriptEditor: (id: string) => void;
+  projectScenes?: Array<{ id: string; name: string }>;
+  openTabs?: Array<{ id: string; type: string }>;
+  onAddScene?: (name: string) => void;
+  onDeleteScene?: (id: string) => void;
+  onOpenSceneTab?: (id: string) => void;
 }
 
 interface NodeInfo {
@@ -143,6 +149,11 @@ export function Sidebar({
   onDuplicateObject,
   onUpdateState,
   onOpenScriptEditor,
+  projectScenes = [{ id: 'default', name: 'Main Scene' }],
+  openTabs = [],
+  onAddScene,
+  onDeleteScene,
+  onOpenSceneTab,
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -465,6 +476,88 @@ export function Sidebar({
       <div className="sidebar-content">
         {sidebarView === 'hierarchy' && (
           <div className="hierarchy-tree">
+            {/* Scenes Management Section */}
+            <div style={{
+              padding: '0 8px 12px 8px',
+              borderBottom: '1px solid var(--border-light)',
+              marginBottom: '12px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Scenes</span>
+                <button
+                  onClick={() => {
+                    const name = prompt("Enter new scene name:");
+                    if (name && name.trim()) {
+                      onAddScene?.(name.trim());
+                    }
+                  }}
+                  title="Create New Scene"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--accent)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px'
+                  }}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {projectScenes.map((sc) => {
+                  const isOpen = openTabs.some(t => t.id === `scene-${sc.id}`);
+                  return (
+                    <div
+                      key={sc.id}
+                      onClick={() => onOpenSceneTab?.(sc.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        border: '1px solid rgba(255, 255, 255, 0.05)',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        color: isOpen ? 'var(--text-main)' : 'var(--text-muted)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Smartphone size={10} style={{ color: isOpen ? 'var(--accent)' : 'inherit' }} />
+                        <span>{sc.name}</span>
+                      </div>
+                      
+                      {sc.id !== 'default' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete scene "${sc.name}"?`)) {
+                              onDeleteScene?.(sc.id);
+                            }
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <h3 className="group-title">Scene Nodes (Double-click to rename)</h3>
             <div className="hierarchy-search-bar" style={{ padding: '4px 8px', marginBottom: '8px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
               <Search size={12} style={{ opacity: 0.5, flexShrink: 0 }} />

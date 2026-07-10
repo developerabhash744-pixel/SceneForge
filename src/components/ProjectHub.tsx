@@ -244,6 +244,15 @@ export function ProjectHub({ onLoadProject, activeProjectId, onBackToEditor }: P
   const [projectName, setProjectName] = useState('');
   const [projectDesc, setProjectDesc] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('empty');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Load projects database on mount
   useEffect(() => {
@@ -461,18 +470,22 @@ export function ProjectHub({ onLoadProject, activeProjectId, onBackToEditor }: P
       {/* Main Grid: Split creator & recent lists */}
       <div style={{
         flex: 1,
-        display: 'grid',
-        gridTemplateColumns: 'minmax(320px, 400px) 1fr',
-        overflow: 'hidden'
+        display: isMobile ? 'flex' : 'grid',
+        flexDirection: isMobile ? 'column' : 'row',
+        gridTemplateColumns: isMobile ? undefined : 'minmax(320px, 400px) 1fr',
+        overflowY: isMobile ? 'auto' : 'hidden',
+        overflowX: 'hidden'
       }}>
         {/* Left Side: Create New Project form */}
         <div style={{
-          borderRight: '1px solid rgba(255,255,255,0.05)',
+          borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.05)',
+          borderBottom: isMobile ? '1px solid rgba(255,255,255,0.05)' : 'none',
           padding: '24px',
           background: 'rgba(0,0,0,0.15)',
           display: 'flex',
           flexDirection: 'column',
-          overflowY: 'auto'
+          overflowY: isMobile ? 'visible' : 'auto',
+          flexShrink: 0
         }}>
           <h2 style={{ fontSize: '15px', color: 'rgb(6, 182, 212)', marginTop: 0, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Plus size={16} /> New Startup Workspace
@@ -591,7 +604,8 @@ export function ProjectHub({ onLoadProject, activeProjectId, onBackToEditor }: P
           padding: '24px',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          overflow: isMobile ? 'visible' : 'hidden',
+          flexShrink: 0
         }}>
           <h2 style={{ fontSize: '15px', marginTop: 0, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <FolderOpen size={16} className="text-cyan-400" /> Recent Projects ({projects.length})
@@ -599,7 +613,7 @@ export function ProjectHub({ onLoadProject, activeProjectId, onBackToEditor }: P
 
           <div style={{
             flex: 1,
-            overflowY: 'auto',
+            overflowY: isMobile ? 'visible' : 'auto',
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
             gap: '16px',

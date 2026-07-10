@@ -58,6 +58,7 @@ export interface SceneObject {
   // Custom user-defined tags/metadata
   customProperties: Record<string, string>;
   script?: string;
+  scriptName?: string;
 }
 
 export interface EditorState {
@@ -92,6 +93,12 @@ export interface EditorState {
   cameraOrbitSpeed?: number;
 }
 
+export interface ProjectScene {
+  id: string;
+  name: string;
+  objects: SceneObject[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -99,4 +106,5 @@ export interface Project {
   createdAt: string;
   objects: SceneObject[];
   editorState: Omit<EditorState, 'objects' | 'selectedId'>;
+  scenes?: ProjectScene[];
 }

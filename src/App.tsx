@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
-import type { Keyframe, SceneObject, ObjectType, EditorState, AnimationTrack, Project } from './types';
+import type { Keyframe, SceneObject, ObjectType, EditorState, AnimationTrack, Project, ProjectScene } from './types';
 import { ThreeViewport } from './components/ThreeViewport';
 import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
 import { Timeline } from './components/Timeline';
 import { ProjectHub } from './components/ProjectHub';
+
+interface EditorTab {
+  id: string;
+  name: string;
+  type: 'scene' | 'script';
+  targetId?: string;
+}
 import {
   Download,
   Upload,
@@ -162,7 +169,15 @@ export function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [previewModeActive, setPreviewModeActive] = useState(false);
-  const [scriptEditObjectId, setScriptEditObjectId] = useState<string | null>(null);
+
+  // Tab & Multi-Scene States
+  const [scenes, setScenes] = useState<ProjectScene[]>([
+    { id: 'default', name: 'Main Scene', objects: [] }
+  ]);
+  const [openTabs, setOpenTabs] = useState<EditorTab[]>([
+    { id: 'scene-default', name: 'Main Scene', type: 'scene' }
+  ]);
+  const [activeTabId, setActiveTabId] = useState<string>('scene-default');
 
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -266,6 +281,13 @@ export function App() {
             setEditorState(found.editorState);
             setActiveProjectId(found.id);
             setCurrentView('editor');
+            if (found.scenes && found.scenes.length > 0) {
+              setScenes(found.scenes);
+            } else {
+              setScenes([{ id: 'default', name: 'Main Scene', objects: found.objects }]);
+            }
+            setOpenTabs([{ id: 'scene-default', name: 'Main Scene', type: 'scene' }]);
+            setActiveTabId('scene-default');
           }
         } catch (e) {
           console.error('Error restoring active project', e);
@@ -273,6 +295,15 @@ export function App() {
       }
     }
   }, []);
+
+  // Keep active scene's objects array synchronized with local editor state
+  useEffect(() => {
+    const currentSceneTab = openTabs.find(t => t.id === activeTabId && t.type === 'scene');
+    if (currentSceneTab) {
+      const currentSceneId = currentSceneTab.id.replace('scene-', '');
+      setScenes(prev => prev.map(sc => sc.id === currentSceneId ? { ...sc, objects } : sc));
+    }
+  }, [objects, activeTabId, openTabs]);
 
   // Auto-save changes to the active project in the database
   useEffect(() => {
@@ -283,7 +314,13 @@ export function App() {
           const allProjects = JSON.parse(raw) as Project[];
           const idx = allProjects.findIndex((p) => p.id === activeProjectId);
           if (idx !== -1) {
-            allProjects[idx].objects = objects;
+            allProjects[idx].scenes = scenes;
+            const defaultScene = scenes.find(sc => sc.id === 'default');
+            if (defaultScene) {
+              allProjects[idx].objects = defaultScene.objects;
+            } else {
+              allProjects[idx].objects = objects;
+            }
             allProjects[idx].editorState = editorState;
             localStorage.setItem('sceneforge_all_projects', JSON.stringify(allProjects));
           }
@@ -292,7 +329,7 @@ export function App() {
         }
       }
     }
-  }, [objects, editorState, activeProjectId]);
+  }, [objects, editorState, activeProjectId, scenes]);
 
   const [measuredDistance, setMeasuredDistance] = useState<number | null>(null);
   const [measureStatus, setMeasureStatus] = useState<'idle' | 'first_clicked' | 'measured'>('idle');
@@ -329,6 +366,82 @@ export function App() {
     setActiveProjectId(project.id);
     localStorage.setItem('sceneforge_active_project_id', project.id);
     setCurrentView('editor');
+
+    if (project.scenes && project.scenes.length > 0) {
+      setScenes(project.scenes);
+    } else {
+      setScenes([{ id: 'default', name: 'Main Scene', objects: project.objects }]);
+    }
+    setOpenTabs([{ id: 'scene-default', name: 'Main Scene', type: 'scene' }]);
+    setActiveTabId('scene-default');
+  };
+
+  const handleSwitchScene = (targetSceneId: string) => {
+    const currentSceneTab = openTabs.find(t => t.id === activeTabId && t.type === 'scene');
+    if (currentSceneTab) {
+      const currentSceneId = currentSceneTab.id.replace('scene-', '');
+      setScenes(prev => prev.map(sc => sc.id === currentSceneId ? { ...sc, objects } : sc));
+    }
+    const targetScene = scenes.find(sc => sc.id === targetSceneId);
+    if (targetScene) {
+      setObjects(targetScene.objects);
+      setSelectedId(null);
+    }
+    setActiveTabId(`scene-${targetSceneId}`);
+  };
+
+  const handleAddScene = (name: string) => {
+    const newSceneId = `scene-${Date.now()}`;
+    const newScene: ProjectScene = {
+      id: newSceneId,
+      name,
+      objects: []
+    };
+    setScenes(prev => [...prev, newScene]);
+    setOpenTabs(prev => [...prev, { id: `scene-${newSceneId}`, name, type: 'scene' }]);
+    setTimeout(() => {
+      handleSwitchScene(newSceneId);
+    }, 0);
+  };
+
+  const handleDeleteScene = (sceneId: string) => {
+    if (sceneId === 'default') return;
+    setOpenTabs(prev => prev.filter(t => t.id !== `scene-${sceneId}`));
+    setScenes(prev => prev.filter(sc => sc.id !== sceneId));
+    if (activeTabId === `scene-${sceneId}`) {
+      handleSwitchScene('default');
+    }
+  };
+
+  const handleOpenScriptTab = (objectId: string, scriptName: string) => {
+    const tabId = `script-${objectId}`;
+    const tabName = scriptName.endsWith('.py') ? scriptName : `${scriptName}.py`;
+    setOpenTabs(prev => {
+      const exists = prev.some(t => t.id === tabId);
+      if (exists) return prev;
+      return [...prev, { id: tabId, name: tabName, type: 'script', targetId: objectId }];
+    });
+    setActiveTabId(tabId);
+  };
+
+  const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (activeTabId === tabId) {
+      const activeIndex = openTabs.findIndex(t => t.id === tabId);
+      let nextActiveTab = openTabs[0];
+      if (activeIndex > 0) {
+        nextActiveTab = openTabs[activeIndex - 1];
+      } else if (activeIndex < openTabs.length - 1) {
+        nextActiveTab = openTabs[activeIndex + 1];
+      }
+
+      if (nextActiveTab.type === 'scene') {
+        handleSwitchScene(nextActiveTab.id.replace('scene-', ''));
+      } else {
+        setActiveTabId(nextActiveTab.id);
+      }
+    }
+    setOpenTabs(prev => prev.filter(t => t.id !== tabId));
   };
 
   const handleBackToHub = () => {
@@ -802,242 +915,454 @@ export function App() {
               onUpdateObject={handleUpdateObject}
               onDuplicateObject={handleDuplicateObject}
               onUpdateState={handleUpdateState}
-              onOpenScriptEditor={(id) => setScriptEditObjectId(id)}
+              projectScenes={scenes}
+              openTabs={openTabs}
+              onAddScene={handleAddScene}
+              onDeleteScene={handleDeleteScene}
+              onOpenSceneTab={handleSwitchScene}
+              onOpenScriptEditor={(id) => {
+                const obj = objects.find(o => o.id === id);
+                if (!obj) return;
+                if (!obj.scriptName) {
+                  const name = prompt("Enter a script name (e.g. rotate_cube):");
+                  if (name && name.trim()) {
+                    const scriptName = name.trim();
+                    handleUpdateObject(id, { script: `# Procedural driver for ${obj.name}\n`, scriptName });
+                    handleOpenScriptTab(id, scriptName);
+                  }
+                } else {
+                  handleOpenScriptTab(id, obj.scriptName);
+                }
+              }}
             />
           </div>
         </div>
 
-        {/* Center Viewport */}
-        <main className="viewport-wrapper" style={{ position: 'relative' }}>
-          {/* Visual measurement ruler readouts HUD */}
-          {editorState.measureMode && (
-            <div className="ruler-hud-banner" style={{
-              position: 'absolute',
-              top: '64px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              background: 'rgba(15, 23, 42, 0.9)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid rgb(0, 240, 255)',
-              borderRadius: '6px',
-              padding: '6px 12px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              color: '#fff',
-              zIndex: 100,
-              fontSize: '11px',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-              pointerEvents: 'none',
-              whiteSpace: 'nowrap'
-            }}>
-              <span style={{ color: 'rgb(0, 240, 255)', fontWeight: 'bold' }}>📏 RULER:</span>
-              {measureStatus === 'idle' && <span>Tap 3D surface to start measuring</span>}
-              {measureStatus === 'first_clicked' && <span>First point marked. Tap second point...</span>}
-              {measureStatus === 'measured' && (
-                <>
-                  <span>Distance:</span>
-                  <strong style={{ color: 'rgb(0, 240, 255)', fontSize: '13px' }}>{measuredDistance?.toFixed(3)}m</strong>
-                  <span style={{ fontSize: '9px', opacity: 0.6 }}>(Tap again to measure another)</span>
-                </>
-              )}
-            </div>
-          )}
-          {/* Overlay Viewport Controls */}
-          {/* Top-Left: Transform Modes */}
-          <div className="viewport-overlay-controls top-left">
-            <div className="overlay-group">
-              <button
-                className={`overlay-btn ${editorState.transformMode === 'select' ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ transformMode: 'select' })}
-                title="Selection Mode"
-              >
-                <MousePointer size={16} />
-              </button>
-              <button
-                className={`overlay-btn ${editorState.transformMode === 'translate' ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ transformMode: 'translate' })}
-                title="Translate Gizmo (G)"
-              >
-                <Move size={16} />
-              </button>
-              <button
-                className={`overlay-btn ${editorState.transformMode === 'rotate' ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ transformMode: 'rotate' })}
-                title="Rotate Gizmo (R)"
-              >
-                <RotateCw size={16} />
-              </button>
-              <button
-                className={`overlay-btn ${editorState.transformMode === 'scale' ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ transformMode: 'scale' })}
-                title="Scale Gizmo (S)"
-              >
-                <Maximize2 size={16} />
-              </button>
-              <span className="overlay-divider" style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
-              <button
-                className="overlay-btn space-toggle-btn"
-                onClick={() => handleUpdateState({ transformSpace: editorState.transformSpace === 'local' ? 'world' : 'local' })}
-                title={`Coordinate Space: ${editorState.transformSpace.toUpperCase()}`}
-                style={{ fontSize: '9px', fontWeight: 'bold', width: 'auto', padding: '0 8px' }}
-              >
-                {editorState.transformSpace.toUpperCase()}
-              </button>
-            </div>
-          </div>
-
-          {/* Top-Right: Grid Snapping */}
-          <div className="viewport-overlay-controls top-right">
-            <div className="overlay-group">
-              <button
-                className={`overlay-btn snap-toggle ${editorState.snapEnabled ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ snapEnabled: !editorState.snapEnabled })}
-                title="Toggle Snapping"
-              >
-                <Grid size={16} />
-              </button>
-              {editorState.snapEnabled && (
-                <div className="snap-options">
-                  <select
-                    value={editorState.snapTranslation}
-                    onChange={(e) => handleUpdateState({ snapTranslation: parseFloat(e.target.value) })}
-                    className="snap-select"
-                    title="Translation Snap (Grid)"
-                  >
-                    <option value={0.1}>Grid: 0.1m</option>
-                    <option value={0.25}>Grid: 0.25m</option>
-                    <option value={0.5}>Grid: 0.5m</option>
-                    <option value={1.0}>Grid: 1.0m</option>
-                  </select>
-                  <select
-                    value={editorState.snapRotation}
-                    onChange={(e) => handleUpdateState({ snapRotation: parseFloat(e.target.value) })}
-                    className="snap-select"
-                    title="Rotation Snap"
-                  >
-                    <option value={5}>Snap: 5°</option>
-                    <option value={15}>Snap: 15°</option>
-                    <option value={45}>Snap: 45°</option>
-                    <option value={90}>Snap: 90°</option>
-                  </select>
-                  <select
-                    value={editorState.snapScale}
-                    onChange={(e) => handleUpdateState({ snapScale: parseFloat(e.target.value) })}
-                    className="snap-select"
-                    title="Scale Snap"
-                  >
-                    <option value={0.05}>Scale: 0.05x</option>
-                    <option value={0.1}>Scale: 0.1x</option>
-                    <option value={0.25}>Scale: 0.25x</option>
-                    <option value={0.5}>Scale: 0.5x</option>
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom-Right (Floating above timeline): Camera Presets */}
-          <div className="viewport-overlay-controls bottom-right">
-            <div className="overlay-group">
-              <button
-                className={`overlay-btn camera-btn ${editorState.fpsMode ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ fpsMode: !editorState.fpsMode })}
-                title="Toggle First-Person WASD Walkthrough"
-                style={{ background: editorState.fpsMode ? 'rgba(239, 68, 68, 0.25)' : 'none', borderColor: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'transparent' }}
-              >
-                <span style={{ fontSize: '9px', fontWeight: 'bold', color: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'inherit' }}>FPS</span>
-              </button>
-              <span className="overlay-divider" style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
-              <button
-                className={`overlay-btn camera-btn ${editorState.cameraPreset === 'perspective' ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ cameraPreset: 'perspective' })}
-                title="Perspective Camera"
-              >
-                <Video size={16} />
-              </button>
-              <button
-                className={`overlay-btn camera-btn ${editorState.cameraPreset === 'top' ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ cameraPreset: 'top' })}
-                title="Top Ortho"
-              >
-                <span>TOP</span>
-              </button>
-              <button
-                className={`overlay-btn camera-btn ${editorState.cameraPreset === 'front' ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ cameraPreset: 'front' })}
-                title="Front Ortho"
-              >
-                <span>FRNT</span>
-              </button>
-              <button
-                className={`overlay-btn camera-btn ${editorState.cameraPreset === 'right' ? 'active' : ''}`}
-                onClick={() => handleUpdateState({ cameraPreset: 'right' })}
-                title="Right Ortho"
-              >
-                <span>RGHT</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Bottom-Left: Resolution & UI Scale HUD Overlay */}
-          <div style={{
-            position: 'absolute',
-            bottom: '12px',
-            left: '12px',
-            background: 'rgba(9, 9, 11, 0.75)',
-            backdropFilter: 'blur(4px)',
-            border: '1px solid var(--border-light)',
-            padding: '4px 8px',
-            borderRadius: '4px',
+        {/* Center Viewport and Tabs Area */}
+        <main className="viewport-wrapper" style={{
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}>
+          {/* Horizontal Tabs Topbar */}
+          <div className="editor-tabs-bar" style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            pointerEvents: 'none',
-            zIndex: 10,
-            fontSize: '9px',
-            fontFamily: 'monospace',
-            color: 'var(--text-muted)'
+            background: 'rgba(15, 23, 42, 0.95)',
+            borderBottom: '1px solid var(--border-light)',
+            height: '36px',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            gap: '2px',
+            padding: '0 8px',
+            zIndex: 50,
+            flexShrink: 0
           }}>
-            <span style={{ color: 'var(--accent)' }}>SCALE: {viewportMode.toUpperCase()}</span>
-            <span style={{ opacity: 0.3 }}>|</span>
-            <span>RES: {viewportMode === 'tablet' ? '1024 x 768' : 'AUTO'}</span>
+            {openTabs.map((tab) => {
+              const isActive = activeTabId === tab.id;
+              return (
+                <div
+                  key={tab.id}
+                  onClick={() => {
+                    if (tab.type === 'scene') {
+                      handleSwitchScene(tab.id.replace('scene-', ''));
+                    } else {
+                      setActiveTabId(tab.id);
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0 12px',
+                    height: '100%',
+                    background: isActive ? 'var(--bg-surface)' : 'rgba(255,255,255,0.02)',
+                    borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                    color: isActive ? 'var(--text-main)' : 'var(--text-muted)',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    borderTopLeftRadius: '4px',
+                    borderTopRightRadius: '4px',
+                    transition: 'all 0.15s',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {tab.type === 'scene' ? <Smartphone size={10} style={{ color: isActive ? 'var(--accent)' : 'inherit' }} /> : <FileCode size={10} style={{ color: isActive ? 'var(--accent)' : 'inherit' }} />}
+                  <span>{tab.name}</span>
+                  {tab.id !== 'scene-default' && (
+                    <span
+                      onClick={(e) => handleCloseTab(tab.id, e)}
+                      style={{
+                        marginLeft: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        opacity: 0.5,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <X size={10} />
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
-          {/* ThreeJS viewport component */}
-          <ThreeViewport
-            objects={objects}
-            selectedId={selectedId}
-            transformMode={editorState.transformMode}
-            snapEnabled={editorState.snapEnabled}
-            snapTranslation={editorState.snapTranslation}
-            snapRotation={editorState.snapRotation}
-            snapScale={editorState.snapScale}
-            transformSpace={editorState.transformSpace}
-            fpsMode={editorState.fpsMode}
-            skyboxPreset={editorState.skyboxPreset}
-            fogEnabled={editorState.fogEnabled}
-            fogColor={editorState.fogColor}
-            fogDensity={editorState.fogDensity}
-            bloomEnabled={editorState.bloomEnabled}
-            gridVisible={editorState.gridVisible}
-            measureMode={editorState.measureMode}
-            gizmoSize={editorState.gizmoSize}
-            currentFrame={editorState.currentFrame}
-            startFrame={editorState.startFrame}
-            endFrame={editorState.endFrame}
-            isPlaying={editorState.isPlaying}
-            fps={editorState.fps}
-            loop={editorState.loop}
-            cameraPreset={editorState.cameraPreset}
-            previewMode={previewModeActive}
-            playbackSpeed={editorState.playbackSpeed ?? 1.0}
-            skyboxTint={editorState.skyboxTint || '#ffffff'}
-            cameraOrbitSpeed={editorState.cameraOrbitSpeed ?? 1.0}
-            onSelectObject={handleSelectObject}
-            onUpdateObjectTransform={handleUpdateObjectTransform}
-            onFrameChange={(frame) => handleUpdateState({ currentFrame: frame })}
-          />
+          {/* Conditional Editor Content Area */}
+          {(() => {
+            const activeTab = openTabs.find(t => t.id === activeTabId);
+            if (activeTab && activeTab.type === 'script') {
+              // Python Script Editor
+              const targetObj = objects.find(o => o.id === activeTab.targetId);
+              if (!targetObj) return (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                  Object was deleted or is no longer available.
+                </div>
+              );
+              return (
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  background: '#09090b',
+                  padding: '16px',
+                  boxSizing: 'border-box',
+                  overflowY: 'auto'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <FileCode size={14} style={{ color: 'var(--accent)' }} />
+                      <span style={{ fontSize: '12px', fontWeight: 'bold' }}>Python Editor: {activeTab.name}</span>
+                      <span style={{ fontSize: '10px', opacity: 0.4 }}>({targetObj.name})</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        onClick={() => {
+                          const code = `# Floating hover (Sine wave)\nimport math\npos[1] = math.sin(frame * 0.15) * 1.5 + 1.0`;
+                          handleUpdateObject(targetObj.id, { script: code });
+                        }}
+                        style={{
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid var(--border-light)',
+                          color: 'var(--text-secondary)',
+                          fontSize: '9px',
+                          padding: '2px 8px',
+                          borderRadius: '3px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Hover
+                      </button>
+                      <button
+                        onClick={() => {
+                          const code = `# Constantly spin\nrot[1] = (frame * 3.0) % 360`;
+                          handleUpdateObject(targetObj.id, { script: code });
+                        }}
+                        style={{
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid var(--border-light)',
+                          color: 'var(--text-secondary)',
+                          fontSize: '9px',
+                          padding: '2px 8px',
+                          borderRadius: '3px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Spin
+                      </button>
+                      <button
+                        onClick={() => {
+                          const code = `# Pulsing scale\nimport math\ns = 1.0 + math.sin(frame * 0.2) * 0.3\nscl[0] = s\nscl[1] = s\nscl[2] = s`;
+                          handleUpdateObject(targetObj.id, { script: code });
+                        }}
+                        style={{
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid var(--border-light)',
+                          color: 'var(--text-secondary)',
+                          fontSize: '9px',
+                          padding: '2px 8px',
+                          borderRadius: '3px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Pulse
+                      </button>
+                      {targetObj.script && (
+                        <button
+                          onClick={() => {
+                            if (confirm("Clear python script?")) {
+                              handleUpdateObject(targetObj.id, { script: '' });
+                            }
+                          }}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            color: 'rgb(239, 68, 68)',
+                            fontSize: '9px',
+                            padding: '2px 8px',
+                            borderRadius: '3px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Clear Script
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <textarea
+                    value={targetObj.script || ''}
+                    onChange={(e) => handleUpdateObject(targetObj.id, { script: e.target.value })}
+                    placeholder="# Write Python code here...# Example:# import math# pos[1] = math.sin(frame * 0.15) * 2"
+                    style={{
+                      flex: 1,
+                      width: '100%',
+                      background: 'rgba(0,0,0,0.4)',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '4px',
+                      padding: '12px',
+                      color: '#38bdf8',
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      outline: 'none',
+                      resize: 'none',
+                      lineHeight: '1.5'
+                    }}
+                  />
+                </div>
+              );
+            }
+
+            // Otherwise, render regular ThreeJS Viewport & overlays
+            return (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+                {editorState.measureMode && (
+                  <div className="ruler-hud-banner" style={{
+                    position: 'absolute',
+                    top: '64px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(15, 23, 42, 0.9)',
+                    backdropFilter: 'blur(8px)',
+                    border: '1px solid rgb(0, 240, 255)',
+                    borderRadius: '6px',
+                    padding: '6px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: '#fff',
+                    zIndex: 100,
+                    fontSize: '11px',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                    pointerEvents: 'none',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    <span style={{ color: 'rgb(0, 240, 255)', fontWeight: 'bold' }}>📏 RULER:</span>
+                    {measureStatus === 'idle' && <span>Tap 3D surface to start measuring</span>}
+                    {measureStatus === 'first_clicked' && <span>First point marked. Tap second point...</span>}
+                    {measureStatus === 'measured' && (
+                      <>
+                        <span>Distance:</span>
+                        <strong style={{ color: 'rgb(0, 240, 255)', fontSize: '13px' }}>{measuredDistance?.toFixed(3)}m</strong>
+                        <span style={{ fontSize: '9px', opacity: 0.6 }}>(Tap again to measure another)</span>
+                      </>
+                    )}
+                  </div>
+                )}
+                
+                {/* Viewport controls */}
+                <div className="viewport-overlay-controls top-left">
+                  <div className="overlay-group">
+                    <button
+                      className={`overlay-btn ${editorState.transformMode === 'select' ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ transformMode: 'select' })}
+                      title="Selection Mode"
+                    >
+                      <MousePointer size={16} />
+                    </button>
+                    <button
+                      className={`overlay-btn ${editorState.transformMode === 'translate' ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ transformMode: 'translate' })}
+                      title="Translate Gizmo (G)"
+                    >
+                      <Move size={16} />
+                    </button>
+                    <button
+                      className={`overlay-btn ${editorState.transformMode === 'rotate' ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ transformMode: 'rotate' })}
+                      title="Rotate Gizmo (R)"
+                    >
+                      <RotateCw size={16} />
+                    </button>
+                    <button
+                      className={`overlay-btn ${editorState.transformMode === 'scale' ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ transformMode: 'scale' })}
+                      title="Scale Gizmo (S)"
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                    <span className="overlay-divider" style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+                    <button
+                      className="overlay-btn space-toggle-btn"
+                      onClick={() => handleUpdateState({ transformSpace: editorState.transformSpace === 'local' ? 'world' : 'local' })}
+                      title={`Coordinate Space: ${editorState.transformSpace.toUpperCase()}`}
+                      style={{ fontSize: '9px', fontWeight: 'bold', width: 'auto', padding: '0 8px' }}
+                    >
+                      {editorState.transformSpace.toUpperCase()}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="viewport-overlay-controls top-right">
+                  <div className="overlay-group">
+                    <button
+                      className={`overlay-btn snap-toggle ${editorState.snapEnabled ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ snapEnabled: !editorState.snapEnabled })}
+                      title="Toggle Snapping"
+                    >
+                      <Grid size={16} />
+                    </button>
+                    {editorState.snapEnabled && (
+                      <div className="snap-options">
+                        <select
+                          value={editorState.snapTranslation}
+                          onChange={(e) => handleUpdateState({ snapTranslation: parseFloat(e.target.value) })}
+                          className="snap-select"
+                          title="Translation Snap (Grid)"
+                        >
+                          <option value={0.1}>Grid: 0.1m</option>
+                          <option value={0.25}>Grid: 0.25m</option>
+                          <option value={0.5}>Grid: 0.5m</option>
+                          <option value={1.0}>Grid: 1.0m</option>
+                        </select>
+                        <select
+                          value={editorState.snapRotation}
+                          onChange={(e) => handleUpdateState({ snapRotation: parseFloat(e.target.value) })}
+                          className="snap-select"
+                          title="Rotation Snap"
+                        >
+                          <option value={5}>Snap: 5°</option>
+                          <option value={15}>Snap: 15°</option>
+                          <option value={45}>Snap: 45°</option>
+                          <option value={90}>Snap: 90°</option>
+                        </select>
+                        <select
+                          value={editorState.snapScale}
+                          onChange={(e) => handleUpdateState({ snapScale: parseFloat(e.target.value) })}
+                          className="snap-select"
+                          title="Scale Snap"
+                        >
+                          <option value={0.05}>Scale: 0.05x</option>
+                          <option value={0.1}>Scale: 0.1x</option>
+                          <option value={0.25}>Scale: 0.25x</option>
+                          <option value={0.5}>Scale: 0.5x</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="viewport-overlay-controls bottom-right">
+                  <div className="overlay-group">
+                    <button
+                      className={`overlay-btn camera-btn ${editorState.fpsMode ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ fpsMode: !editorState.fpsMode })}
+                      title="Toggle First-Person WASD Walkthrough"
+                      style={{ background: editorState.fpsMode ? 'rgba(239, 68, 68, 0.25)' : 'none', borderColor: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'transparent' }}
+                    >
+                      <span style={{ fontSize: '9px', fontWeight: 'bold', color: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'inherit' }}>FPS</span>
+                    </button>
+                    <span className="overlay-divider" style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+                    <button
+                      className={`overlay-btn camera-btn ${editorState.cameraPreset === 'perspective' ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ cameraPreset: 'perspective' })}
+                      title="Perspective Camera"
+                    >
+                      <Video size={16} />
+                    </button>
+                    <button
+                      className={`overlay-btn camera-btn ${editorState.cameraPreset === 'top' ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ cameraPreset: 'top' })}
+                      title="Top Ortho"
+                    >
+                      <span>TOP</span>
+                    </button>
+                    <button
+                      className={`overlay-btn camera-btn ${editorState.cameraPreset === 'front' ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ cameraPreset: 'front' })}
+                      title="Front Ortho"
+                    >
+                      <span>FRNT</span>
+                    </button>
+                    <button
+                      className={`overlay-btn camera-btn ${editorState.cameraPreset === 'right' ? 'active' : ''}`}
+                      onClick={() => handleUpdateState({ cameraPreset: 'right' })}
+                      title="Right Ortho"
+                    >
+                      <span>RGHT</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{
+                  position: 'absolute',
+                  bottom: '12px',
+                  left: '12px',
+                  background: 'rgba(9, 9, 11, 0.75)',
+                  backdropFilter: 'blur(4px)',
+                  border: '1px solid var(--border-light)',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  pointerEvents: 'none',
+                  zIndex: 10,
+                  fontSize: '9px',
+                  fontFamily: 'monospace',
+                  color: 'var(--text-muted)'
+                }}>
+                  <span style={{ color: 'var(--accent)' }}>SCALE: {viewportMode.toUpperCase()}</span>
+                  <span style={{ opacity: 0.3 }}>|</span>
+                  <span>RES: {viewportMode === 'tablet' ? '1024 x 768' : 'AUTO'}</span>
+                </div>
+
+                <ThreeViewport
+                  objects={objects}
+                  selectedId={selectedId}
+                  transformMode={editorState.transformMode}
+                  snapEnabled={editorState.snapEnabled}
+                  snapTranslation={editorState.snapTranslation}
+                  snapRotation={editorState.snapRotation}
+                  snapScale={editorState.snapScale}
+                  transformSpace={editorState.transformSpace}
+                  fpsMode={editorState.fpsMode}
+                  skyboxPreset={editorState.skyboxPreset}
+                  fogEnabled={editorState.fogEnabled}
+                  fogColor={editorState.fogColor}
+                  fogDensity={editorState.fogDensity}
+                  bloomEnabled={editorState.bloomEnabled}
+                  gridVisible={editorState.gridVisible}
+                  measureMode={editorState.measureMode}
+                  gizmoSize={editorState.gizmoSize}
+                  currentFrame={editorState.currentFrame}
+                  startFrame={editorState.startFrame}
+                  endFrame={editorState.endFrame}
+                  isPlaying={editorState.isPlaying}
+                  fps={editorState.fps}
+                  loop={editorState.loop}
+                  cameraPreset={editorState.cameraPreset}
+                  previewMode={previewModeActive}
+                  playbackSpeed={editorState.playbackSpeed ?? 1.0}
+                  skyboxTint={editorState.skyboxTint || '#ffffff'}
+                  cameraOrbitSpeed={editorState.cameraOrbitSpeed ?? 1.0}
+                  onSelectObject={handleSelectObject}
+                  onUpdateObjectTransform={handleUpdateObjectTransform}
+                  onFrameChange={(frame) => handleUpdateState({ currentFrame: frame })}
+                />
+              </div>
+            );
+          })()}
         </main>
 
         {/* Right Slide-out Drawer Panel (Object Inspector) */}
@@ -1099,192 +1424,7 @@ export function App() {
         </button>
       )}
 
-      {/* Floating Python Script Editor Modal overlay */}
-      {scriptEditObjectId && (() => {
-        const obj = objects.find(o => o.id === scriptEditObjectId);
-        if (!obj) return null;
-        return (
-          <div style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(9, 9, 11, 0.65)',
-            backdropFilter: 'blur(4px)'
-          }}>
-            <div style={{
-              width: '420px',
-              background: 'rgba(24, 24, 27, 0.95)',
-              border: '1px solid var(--border-medium)',
-              borderRadius: '8px',
-              boxShadow: 'var(--shadow-lg)',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden'
-            }}>
-              {/* Header */}
-              <div style={{
-                padding: '12px 16px',
-                borderBottom: '1px solid var(--border-light)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'rgba(0,0,0,0.15)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileCode size={14} style={{ color: 'var(--accent)' }} />
-                  <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Python Driver: {obj.name}</span>
-                </div>
-                <button
-                  onClick={() => setScriptEditObjectId(null)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
 
-              {/* Description */}
-              <div style={{ padding: '8px 16px', background: 'rgba(0,0,0,0.05)' }}>
-                <p style={{ fontSize: '10px', opacity: 0.5, margin: 0, lineHeight: '1.4' }}>
-                  Write Python to animate this object procedurally. Modifies <code>pos</code>, <code>rot</code>, and <code>scl</code> over <code>frame</code> and <code>time</code>.
-                </p>
-              </div>
-
-              {/* Editor Textarea */}
-              <div style={{ padding: '16px' }}>
-                <textarea
-                  value={obj.script || ''}
-                  onChange={(e) => handleUpdateObject(obj.id, { script: e.target.value })}
-                  placeholder="# Example:# import math# pos[1] = math.sin(frame * 0.15) * 2# rot[1] = frame * 2"
-                  style={{
-                    width: '100%',
-                    height: '180px',
-                    background: 'rgba(0, 0, 0, 0.25)',
-                    border: '1px solid var(--border-light)',
-                    borderRadius: '4px',
-                    padding: '8px',
-                    color: '#38bdf8',
-                    fontSize: '11px',
-                    fontFamily: 'monospace',
-                    outline: 'none',
-                    resize: 'none'
-                  }}
-                />
-
-                {/* Presets Row */}
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '10px' }}>
-                  <span style={{ fontSize: '10px', opacity: 0.5, alignSelf: 'center', marginRight: '4px' }}>Presets:</span>
-                  <button
-                    onClick={() => {
-                      const code = `# Floating hover (Sine wave)\nimport math\npos[1] = math.sin(frame * 0.15) * 1.5 + 1.0`;
-                      handleUpdateObject(obj.id, { script: code });
-                    }}
-                    style={{
-                      background: 'rgba(255,255,255,0.05)',
-                      border: '1px solid var(--border-light)',
-                      color: 'var(--text-secondary)',
-                      fontSize: '9px',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Hover
-                  </button>
-                  <button
-                    onClick={() => {
-                      const code = `# Constantly spin\nrot[1] = (frame * 3.0) % 360`;
-                      handleUpdateObject(obj.id, { script: code });
-                    }}
-                    style={{
-                      background: 'rgba(255,255,255,0.05)',
-                      border: '1px solid var(--border-light)',
-                      color: 'var(--text-secondary)',
-                      fontSize: '9px',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Spin
-                  </button>
-                  <button
-                    onClick={() => {
-                      const code = `# Pulsing scale\nimport math\ns = 1.0 + math.sin(frame * 0.2) * 0.3\nscl[0] = s\nscl[1] = s\nscl[2] = s`;
-                      handleUpdateObject(obj.id, { script: code });
-                    }}
-                    style={{
-                      background: 'rgba(255,255,255,0.05)',
-                      border: '1px solid var(--border-light)',
-                      color: 'var(--text-secondary)',
-                      fontSize: '9px',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Pulse
-                  </button>
-                  {obj.script && (
-                    <button
-                      onClick={() => {
-                        handleUpdateObject(obj.id, { script: '' });
-                      }}
-                      style={{
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        color: 'rgb(239, 68, 68)',
-                        fontSize: '9px',
-                        padding: '2px 8px',
-                        borderRadius: '3px',
-                        cursor: 'pointer',
-                        marginLeft: 'auto'
-                      }}
-                    >
-                      Clear Script
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Footer Actions */}
-              <div style={{
-                padding: '12px 16px',
-                borderTop: '1px solid var(--border-light)',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: '8px',
-                background: 'rgba(0,0,0,0.1)'
-              }}>
-                <button
-                  onClick={() => setScriptEditObjectId(null)}
-                  style={{
-                    background: 'var(--accent)',
-                    border: 'none',
-                    color: '#000',
-                    fontWeight: 'bold',
-                    fontSize: '11px',
-                    padding: '6px 16px',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
