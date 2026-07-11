@@ -24,7 +24,6 @@ import {
   Maximize2,
   MousePointer,
   Grid,
-  Video,
   Smartphone,
   Menu,
   X,
@@ -313,6 +312,8 @@ export function App() {
   ]);
   const [activeTabId, setActiveTabId] = useState<string>('scene-default');
   const [activeSceneId, setActiveSceneId] = useState<string>('default');
+  const [activeWorkspace, setActiveWorkspace] = useState<'layout' | 'modeling' | 'shading' | 'animation' | 'scripting'>('layout');
+  const [sidebarView, setSidebarView] = useState<'hierarchy' | 'library' | 'creator' | 'project' | 'environment'>('hierarchy');
 
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -400,6 +401,7 @@ export function App() {
     gridVisible: true,
     measureMode: false,
     gizmoSize: 0.85,
+    shadingMode: 'material',
   });
 
   // Load active project on startup if it exists in database
@@ -980,6 +982,81 @@ export function App() {
           </button>
         </div>
 
+        {/* Blender Workspace Selector (Layout, Modeling, Shading, Animation, Scripting) */}
+        {!previewModeActive && (
+          <div className="workspace-tab-selector" style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px',
+            margin: '0 24px',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '6px',
+            padding: '2px',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            height: '26px'
+          }}>
+            {[
+              { id: 'layout', label: 'Layout' },
+              { id: 'modeling', label: 'Modeling' },
+              { id: 'shading', label: 'Shading' },
+              { id: 'animation', label: 'Animation' },
+              { id: 'scripting', label: 'Scripting' }
+            ].map((ws) => {
+              const isActive = activeWorkspace === ws.id;
+              return (
+                <button
+                  key={ws.id}
+                  onClick={() => {
+                    setActiveWorkspace(ws.id as any);
+                    
+                    // Automatically configure matching sidebars/editor tabs based on workspace selection
+                    if (ws.id === 'modeling') {
+                      setSidebarView('library');
+                      setSidebarOpen(true);
+                      setInspectorOpen(false);
+                    } else if (ws.id === 'shading') {
+                      setSidebarView('environment');
+                      setSidebarOpen(true);
+                      setInspectorOpen(true);
+                      handleUpdateState({ shadingMode: 'rendered' });
+                    } else if (ws.id === 'animation') {
+                      setSidebarView('hierarchy');
+                      setTimelineExpanded(true);
+                      setSidebarOpen(true);
+                    } else if (ws.id === 'scripting') {
+                      setSidebarView('project');
+                      setSidebarOpen(true);
+                      const scriptObj = objects.find(o => o.scriptName);
+                      if (scriptObj) {
+                        handleOpenScriptTab(scriptObj.id, scriptObj.scriptName!);
+                      }
+                    } else { // layout
+                      setSidebarView('hierarchy');
+                      setTimelineExpanded(false);
+                    }
+                  }}
+                  style={{
+                    padding: '2px 10px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: isActive ? 'var(--accent)' : 'transparent',
+                    color: isActive ? '#000' : 'var(--text-secondary)',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  {ws.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="header-actions">
           {/* Reset Scene */}
           <button className="header-btn reset-btn" onClick={handleResetScene} title="Reset Scene">
@@ -1043,6 +1120,8 @@ export function App() {
               objects={objects}
               selectedId={selectedId}
               editorState={{ ...editorState, viewportMode }}
+              sidebarView={sidebarView}
+              onSidebarViewChange={setSidebarView}
               onSelectObject={handleSelectObject}
               onAddObject={(type, customProps) => {
                 handleAddObject(type, customProps);
@@ -1310,137 +1389,160 @@ export function App() {
                 )}
                 
                 {/* Viewport controls */}
-                <div className="viewport-overlay-controls top-left">
-                  <div className="overlay-group">
+                {/* Viewport Header Bar (Interaction Row) */}
+                <div className="viewport-header-bar">
+                  <div className="viewport-header-left">
+                    {/* Mode Selector */}
+                    <select className="viewport-mode-select">
+                      <option>Object Mode</option>
+                      <option>View Mode</option>
+                    </select>
+
+                    <span style={{ opacity: 0.2 }}>|</span>
+
+                    {/* Viewport Menus */}
+                    <span className="viewport-menu-item" onClick={() => handleUpdateState({ transformMode: 'select' })}>View</span>
+                    <span className="viewport-menu-item" onClick={() => handleSelectObject(null)}>Select</span>
+                    <span className="viewport-menu-item" onClick={() => setSidebarView('library')}>Add</span>
+                    <span className="viewport-menu-item" style={{ opacity: selectedId ? 1 : 0.4 }} onClick={() => selectedId && handleDeleteObject(selectedId)}>Object</span>
+                  </div>
+
+                  <div className="viewport-header-right">
+                    {/* Transform Coordinate Space */}
                     <button
-                      className={`overlay-btn ${editorState.transformMode === 'select' ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ transformMode: 'select' })}
-                      title="Selection Mode"
-                    >
-                      <MousePointer size={16} />
-                    </button>
-                    <button
-                      className={`overlay-btn ${editorState.transformMode === 'translate' ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ transformMode: 'translate' })}
-                      title="Translate Gizmo (G)"
-                    >
-                      <Move size={16} />
-                    </button>
-                    <button
-                      className={`overlay-btn ${editorState.transformMode === 'rotate' ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ transformMode: 'rotate' })}
-                      title="Rotate Gizmo (R)"
-                    >
-                      <RotateCw size={16} />
-                    </button>
-                    <button
-                      className={`overlay-btn ${editorState.transformMode === 'scale' ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ transformMode: 'scale' })}
-                      title="Scale Gizmo (S)"
-                    >
-                      <Maximize2 size={16} />
-                    </button>
-                    <span className="overlay-divider" style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
-                    <button
-                      className="overlay-btn space-toggle-btn"
                       onClick={() => handleUpdateState({ transformSpace: editorState.transformSpace === 'local' ? 'world' : 'local' })}
                       title={`Coordinate Space: ${editorState.transformSpace.toUpperCase()}`}
-                      style={{ fontSize: '9px', fontWeight: 'bold', width: 'auto', padding: '0 8px' }}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        color: 'var(--text-main)',
+                        padding: '1px 8px',
+                        fontSize: '9px',
+                        fontWeight: 'bold',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
                     >
                       {editorState.transformSpace.toUpperCase()}
                     </button>
+
+                    <span style={{ opacity: 0.2 }}>|</span>
+
+                    {/* Snapping Control */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button
+                        onClick={() => handleUpdateState({ snapEnabled: !editorState.snapEnabled })}
+                        title="Toggle Snapping"
+                        style={{
+                          background: editorState.snapEnabled ? 'rgba(0, 240, 255, 0.2)' : 'none',
+                          border: 'none',
+                          color: editorState.snapEnabled ? 'rgb(0, 240, 255)' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '3px',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        <Grid size={13} />
+                      </button>
+                      {editorState.snapEnabled && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                          <select
+                            value={editorState.snapTranslation}
+                            onChange={(e) => handleUpdateState({ snapTranslation: parseFloat(e.target.value) })}
+                            style={{ background: '#111', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '9px', borderRadius: '3px', padding: '1px' }}
+                          >
+                            <option value={0.1}>0.1m</option>
+                            <option value={0.25}>0.25m</option>
+                            <option value={0.5}>0.5m</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    <span style={{ opacity: 0.2 }}>|</span>
+
+                    {/* Shading Modes (Wireframe, Solid, Material, Rendered) */}
+                    <div className="shading-modes-group">
+                      <button
+                        onClick={() => handleUpdateState({ shadingMode: 'wireframe' })}
+                        title="Wireframe View"
+                        className={`shading-mode-btn ${editorState.shadingMode === 'wireframe' ? 'active' : ''}`}
+                        style={{ color: editorState.shadingMode === 'wireframe' ? '#000' : 'var(--text-secondary)' }}
+                      >
+                        <span style={{ display: 'block', width: '8px', height: '8px', border: '1px solid currentColor', borderRadius: '50%' }} />
+                      </button>
+                      <button
+                        onClick={() => handleUpdateState({ shadingMode: 'solid' })}
+                        title="Solid View"
+                        className={`shading-mode-btn ${editorState.shadingMode === 'solid' ? 'active' : ''}`}
+                        style={{ color: editorState.shadingMode === 'solid' ? '#000' : 'var(--text-secondary)' }}
+                      >
+                        <span style={{ display: 'block', width: '8px', height: '8px', background: 'currentColor', borderRadius: '50%' }} />
+                      </button>
+                      <button
+                        onClick={() => handleUpdateState({ shadingMode: 'material' })}
+                        title="Material Preview"
+                        className={`shading-mode-btn ${editorState.shadingMode === 'material' ? 'active' : ''}`}
+                        style={{ color: editorState.shadingMode === 'material' ? '#000' : 'var(--text-secondary)' }}
+                      >
+                        <span style={{ display: 'block', width: '8px', height: '8px', background: 'currentColor', border: '1px solid var(--text-secondary)', borderRadius: '50%', opacity: 0.6 }} />
+                      </button>
+                      <button
+                        onClick={() => handleUpdateState({ shadingMode: 'rendered' })}
+                        title="Rendered View"
+                        className={`shading-mode-btn ${editorState.shadingMode === 'rendered' ? 'active' : ''}`}
+                        style={{ color: editorState.shadingMode === 'rendered' ? '#000' : 'var(--text-secondary)' }}
+                      >
+                        <span style={{ display: 'block', width: '8px', height: '8px', background: 'currentColor', borderRadius: '50%', boxShadow: editorState.shadingMode === 'rendered' ? '0 0 4px #fff' : 'none' }} />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="viewport-overlay-controls top-right">
-                  <div className="overlay-group">
-                    <button
-                      className={`overlay-btn snap-toggle ${editorState.snapEnabled ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ snapEnabled: !editorState.snapEnabled })}
-                      title="Toggle Snapping"
-                    >
-                      <Grid size={16} />
-                    </button>
-                    {editorState.snapEnabled && (
-                      <div className="snap-options">
-                        <select
-                          value={editorState.snapTranslation}
-                          onChange={(e) => handleUpdateState({ snapTranslation: parseFloat(e.target.value) })}
-                          className="snap-select"
-                          title="Translation Snap (Grid)"
-                        >
-                          <option value={0.1}>Grid: 0.1m</option>
-                          <option value={0.25}>Grid: 0.25m</option>
-                          <option value={0.5}>Grid: 0.5m</option>
-                          <option value={1.0}>Grid: 1.0m</option>
-                        </select>
-                        <select
-                          value={editorState.snapRotation}
-                          onChange={(e) => handleUpdateState({ snapRotation: parseFloat(e.target.value) })}
-                          className="snap-select"
-                          title="Rotation Snap"
-                        >
-                          <option value={5}>Snap: 5°</option>
-                          <option value={15}>Snap: 15°</option>
-                          <option value={45}>Snap: 45°</option>
-                          <option value={90}>Snap: 90°</option>
-                        </select>
-                        <select
-                          value={editorState.snapScale}
-                          onChange={(e) => handleUpdateState({ snapScale: parseFloat(e.target.value) })}
-                          className="snap-select"
-                          title="Scale Snap"
-                        >
-                          <option value={0.05}>Scale: 0.05x</option>
-                          <option value={0.1}>Scale: 0.1x</option>
-                          <option value={0.25}>Scale: 0.25x</option>
-                          <option value={0.5}>Scale: 0.5x</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                {/* Left Vertical Toolbar */}
+                <div className="viewport-left-toolbar">
+                  <button
+                    className={`left-toolbar-btn ${editorState.transformMode === 'select' ? 'active' : ''}`}
+                    onClick={() => handleUpdateState({ transformMode: 'select' })}
+                    title="Select Box"
+                  >
+                    <MousePointer size={14} />
+                  </button>
+                  <button
+                    className={`left-toolbar-btn ${editorState.transformMode === 'translate' ? 'active' : ''}`}
+                    onClick={() => handleUpdateState({ transformMode: 'translate' })}
+                    title="Move Tool (G)"
+                  >
+                    <Move size={14} />
+                  </button>
+                  <button
+                    className={`left-toolbar-btn ${editorState.transformMode === 'rotate' ? 'active' : ''}`}
+                    onClick={() => handleUpdateState({ transformMode: 'rotate' })}
+                    title="Rotate Tool (R)"
+                  >
+                    <RotateCw size={14} />
+                  </button>
+                  <button
+                    className={`left-toolbar-btn ${editorState.transformMode === 'scale' ? 'active' : ''}`}
+                    onClick={() => handleUpdateState({ transformMode: 'scale' })}
+                    title="Scale Tool (S)"
+                  >
+                    <Maximize2 size={14} />
+                  </button>
 
-                <div className="viewport-overlay-controls bottom-right">
-                  <div className="overlay-group">
-                    <button
-                      className={`overlay-btn camera-btn ${editorState.fpsMode ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ fpsMode: !editorState.fpsMode })}
-                      title="Toggle First-Person WASD Walkthrough"
-                      style={{ background: editorState.fpsMode ? 'rgba(239, 68, 68, 0.25)' : 'none', borderColor: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'transparent' }}
-                    >
-                      <span style={{ fontSize: '9px', fontWeight: 'bold', color: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'inherit' }}>FPS</span>
-                    </button>
-                    <span className="overlay-divider" style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
-                    <button
-                      className={`overlay-btn camera-btn ${editorState.cameraPreset === 'perspective' ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ cameraPreset: 'perspective' })}
-                      title="Perspective Camera"
-                    >
-                      <Video size={16} />
-                    </button>
-                    <button
-                      className={`overlay-btn camera-btn ${editorState.cameraPreset === 'top' ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ cameraPreset: 'top' })}
-                      title="Top Ortho"
-                    >
-                      <span>TOP</span>
-                    </button>
-                    <button
-                      className={`overlay-btn camera-btn ${editorState.cameraPreset === 'front' ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ cameraPreset: 'front' })}
-                      title="Front Ortho"
-                    >
-                      <span>FRNT</span>
-                    </button>
-                    <button
-                      className={`overlay-btn camera-btn ${editorState.cameraPreset === 'right' ? 'active' : ''}`}
-                      onClick={() => handleUpdateState({ cameraPreset: 'right' })}
-                      title="Right Ortho"
-                    >
-                      <span>RGHT</span>
-                    </button>
-                  </div>
+                  <span style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
+
+                  {/* FPS walkthrough mode toggle */}
+                  <button
+                    className={`left-toolbar-btn ${editorState.fpsMode ? 'active' : ''}`}
+                    onClick={() => handleUpdateState({ fpsMode: !editorState.fpsMode })}
+                    title="Walkthrough FPS Mode"
+                    style={{ background: editorState.fpsMode ? 'rgba(239, 68, 68, 0.2)' : 'none', color: editorState.fpsMode ? 'rgb(239, 68, 68)' : 'var(--text-secondary)' }}
+                  >
+                    <span style={{ fontSize: '8px', fontWeight: 'bold' }}>FPS</span>
+                  </button>
                 </div>
 
                 <div style={{
@@ -1492,6 +1594,7 @@ export function App() {
                   loop={editorState.loop}
                   cameraPreset={editorState.cameraPreset}
                   previewMode={previewModeActive}
+                  shadingMode={editorState.shadingMode}
                   playbackSpeed={editorState.playbackSpeed ?? 1.0}
                   skyboxTint={editorState.skyboxTint || '#ffffff'}
                   cameraOrbitSpeed={editorState.cameraOrbitSpeed ?? 1.0}

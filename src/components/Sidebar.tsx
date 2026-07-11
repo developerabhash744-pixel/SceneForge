@@ -29,6 +29,8 @@ interface SidebarProps {
   objects: SceneObject[];
   selectedId: string | null;
   editorState: any;
+  sidebarView: 'hierarchy' | 'library' | 'creator' | 'project' | 'environment';
+  onSidebarViewChange: (view: 'hierarchy' | 'library' | 'creator' | 'project' | 'environment') => void;
   onSelectObject: (id: string | null) => void;
   onAddObject: (type: ObjectType, customProps?: Partial<SceneObject>) => void;
   onDeleteObject: (id: string) => void;
@@ -142,6 +144,8 @@ export function Sidebar({
   objects,
   selectedId,
   editorState,
+  sidebarView,
+  onSidebarViewChange: setSidebarView,
   onSelectObject,
   onAddObject,
   onDeleteObject,
@@ -158,7 +162,6 @@ export function Sidebar({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [hierarchySearch, setHierarchySearch] = useState('');
-  const [sidebarView, setSidebarView] = useState<'hierarchy' | 'library' | 'creator' | 'project' | 'environment'>('hierarchy');
 
   // Node Spawner State
   const [searchQuery, setSearchQuery] = useState('');

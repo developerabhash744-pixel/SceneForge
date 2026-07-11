@@ -36,6 +36,7 @@ interface ThreeViewportProps {
   loop: boolean;
   cameraPreset: EditorState['cameraPreset'];
   previewMode: boolean;
+  shadingMode: EditorState['shadingMode'];
   playbackSpeed?: number;
   skyboxTint?: string;
   cameraOrbitSpeed?: number;
@@ -76,6 +77,7 @@ export function ThreeViewport({
   loop,
   cameraPreset,
   previewMode,
+  shadingMode = 'material',
   playbackSpeed = 1.0,
   skyboxTint = '#ffffff',
   cameraOrbitSpeed = 1.0,
@@ -1500,14 +1502,20 @@ export function ThreeViewport({
       if (obj3D instanceof THREE.Mesh && !(obj3D.userData.isLightHelper)) {
         const material = obj3D.material as THREE.MeshStandardMaterial;
         if (material) {
-          material.color.set(obj.color || '#cbd5e1');
-          material.roughness = obj.roughness ?? 0.5;
-          material.metalness = obj.metalness ?? 0.0;
+          if (shadingMode === 'solid') {
+            material.color.set('#7f7f7f');
+            material.roughness = 1.0;
+            material.metalness = 0.0;
+          } else {
+            material.color.set(obj.color || '#cbd5e1');
+            material.roughness = obj.roughness ?? 0.5;
+            material.metalness = obj.metalness ?? 0.0;
+          }
           material.opacity = obj.opacity ?? 1.0;
           material.transparent = (obj.opacity ?? 1.0) < 1.0;
           material.emissive.set(obj.emissive || '#000000');
           material.emissiveIntensity = obj.emissiveIntensity ?? 1.0;
-          material.wireframe = obj.wireframe ?? false;
+          material.wireframe = shadingMode === 'wireframe' ? true : (obj.wireframe ?? false);
 
           // Sync texture map
           const newTex = getTexture(obj.texture, obj.customProperties?.customTexture);

@@ -91,6 +91,7 @@ export interface EditorState {
   playbackSpeed?: number;
   skyboxTint?: string;
   cameraOrbitSpeed?: number;
+  shadingMode?: 'wireframe' | 'solid' | 'material' | 'rendered';
 }
 
 export interface ProjectScene {
