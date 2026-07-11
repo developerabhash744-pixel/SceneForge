@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Grid, Video, Hand, ZoomIn, ZoomOut } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -46,6 +47,7 @@ interface ThreeViewportProps {
     scale: [number, number, number]
   ) => void;
   onFrameChange: (frame: number) => void;
+  onUpdateState?: (updates: Partial<EditorState>) => void;
 }
 
 export function ThreeViewport({
@@ -80,8 +82,10 @@ export function ThreeViewport({
   onSelectObject,
   onUpdateObjectTransform,
   onFrameChange,
+  onUpdateState,
 }: ThreeViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isPanMode, setIsPanMode] = useState(false);
 
   // References to core Three.js components
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -1021,6 +1025,39 @@ export function ThreeViewport({
     orbitControls.update();
   }, [cameraPreset]);
 
+  // Synchronize OrbitControls navigation settings when isPanMode changes
+  useEffect(() => {
+    const orbitControls = orbitControlsRef.current;
+    if (orbitControls) {
+      if (isPanMode) {
+        // Remap left drag to pan and single-finger touch to pan
+        orbitControls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+        if (orbitControls.touches) {
+          orbitControls.touches.ONE = THREE.TOUCH.PAN;
+        }
+      } else {
+        // Restore default orbit rotation behavior
+        orbitControls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+        if (orbitControls.touches) {
+          orbitControls.touches.ONE = THREE.TOUCH.ROTATE;
+        }
+      }
+      orbitControls.update();
+    }
+  }, [isPanMode]);
+
+  const handleZoom = (factor: number) => {
+    const controls = orbitControlsRef.current;
+    if (controls) {
+      const camera = controls.object;
+      const target = controls.target;
+      const dir = new THREE.Vector3().subVectors(camera.position, target);
+      dir.multiplyScalar(factor);
+      camera.position.addVectors(target, dir);
+      controls.update();
+    }
+  };
+
   // Sync Gizmo Transform Mode & Snapping
   useEffect(() => {
     const transformControls = transformControlsRef.current;
@@ -1583,5 +1620,192 @@ export function ThreeViewport({
     }
   }, [objects, selectedId, transformMode, isPlaying]);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%', outline: 'none' }} />;
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100%', outline: 'none', position: 'relative' }}>
+      {/* Floating Viewport Navigation Toolbar (Blender-style) */}
+      {!previewMode && (
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '20px',
+          padding: '6px',
+          zIndex: 40,
+          boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)'
+        }}>
+          {/* Grid Toggle */}
+          <button
+            onClick={() => onUpdateState?.({ gridVisible: !gridVisible })}
+            title="Toggle Grid Helper"
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: 'none',
+              background: gridVisible ? 'rgba(0, 240, 255, 0.2)' : 'transparent',
+              color: gridVisible ? 'rgb(0, 240, 255)' : 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s'
+            }}
+            onMouseEnter={(e) => {
+              if (!gridVisible) e.currentTarget.style.color = 'var(--text-main)';
+              e.currentTarget.style.background = gridVisible ? 'rgba(0, 240, 255, 0.3)' : 'rgba(255,255,255,0.05)';
+            }}
+            onMouseLeave={(e) => {
+              if (!gridVisible) e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.background = gridVisible ? 'rgba(0, 240, 255, 0.2)' : 'transparent';
+            }}
+          >
+            <Grid size={15} />
+          </button>
+
+          {/* Camera View Angle Cycle */}
+          <button
+            onClick={() => {
+              const presets: ('perspective' | 'top' | 'front' | 'right')[] = ['perspective', 'top', 'front', 'right'];
+              const nextIdx = (presets.indexOf(cameraPreset) + 1) % presets.length;
+              onUpdateState?.({ cameraPreset: presets[nextIdx] });
+            }}
+            title={`Cycle View Camera (Active: ${cameraPreset.toUpperCase()})`}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: 'none',
+              background: cameraPreset !== 'perspective' ? 'rgba(0, 240, 255, 0.2)' : 'transparent',
+              color: cameraPreset !== 'perspective' ? 'rgb(0, 240, 255)' : 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'all 0.15s'
+            }}
+            onMouseEnter={(e) => {
+              if (cameraPreset === 'perspective') e.currentTarget.style.color = 'var(--text-main)';
+              e.currentTarget.style.background = cameraPreset !== 'perspective' ? 'rgba(0, 240, 255, 0.3)' : 'rgba(255,255,255,0.05)';
+            }}
+            onMouseLeave={(e) => {
+              if (cameraPreset === 'perspective') e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.background = cameraPreset !== 'perspective' ? 'rgba(0, 240, 255, 0.2)' : 'transparent';
+            }}
+          >
+            <Video size={15} />
+            {cameraPreset !== 'perspective' && (
+              <span style={{
+                position: 'absolute',
+                bottom: '-2px',
+                right: '-2px',
+                fontSize: '7px',
+                fontWeight: 'bold',
+                background: 'rgb(0, 240, 255)',
+                color: '#000',
+                padding: '0 2px',
+                borderRadius: '2px',
+                textTransform: 'uppercase'
+              }}>
+                {cameraPreset.substring(0, 3)}
+              </span>
+            )}
+          </button>
+
+          {/* Pan Hand Mode */}
+          <button
+            onClick={() => setIsPanMode(!isPanMode)}
+            title={isPanMode ? "Active: Pan Mode (Drag to Pan)" : "Switch to Pan Mode"}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: 'none',
+              background: isPanMode ? 'rgba(0, 240, 255, 0.2)' : 'transparent',
+              color: isPanMode ? 'rgb(0, 240, 255)' : 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s'
+            }}
+            onMouseEnter={(e) => {
+              if (!isPanMode) e.currentTarget.style.color = 'var(--text-main)';
+              e.currentTarget.style.background = isPanMode ? 'rgba(0, 240, 255, 0.3)' : 'rgba(255,255,255,0.05)';
+            }}
+            onMouseLeave={(e) => {
+              if (!isPanMode) e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.background = isPanMode ? 'rgba(0, 240, 255, 0.2)' : 'transparent';
+            }}
+          >
+            <Hand size={15} />
+          </button>
+
+          {/* Zoom In */}
+          <button
+            onClick={() => handleZoom(0.85)}
+            title="Zoom In"
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--text-main)';
+              e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <ZoomIn size={15} />
+          </button>
+
+          {/* Zoom Out */}
+          <button
+            onClick={() => handleZoom(1.15)}
+            title="Zoom Out"
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--text-main)';
+              e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <ZoomOut size={15} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }

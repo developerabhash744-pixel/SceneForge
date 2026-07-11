@@ -1498,6 +1498,7 @@ export function App() {
                   onSelectObject={handleSelectObject}
                   onUpdateObjectTransform={handleUpdateObjectTransform}
                   onFrameChange={(frame) => handleUpdateState({ currentFrame: frame })}
+                  onUpdateState={handleUpdateState}
                 />
               </div>
             );
