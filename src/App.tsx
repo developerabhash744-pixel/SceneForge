@@ -312,6 +312,7 @@ export function App() {
     { id: 'scene-default', name: 'Main Scene', type: 'scene' }
   ]);
   const [activeTabId, setActiveTabId] = useState<string>('scene-default');
+  const [activeSceneId, setActiveSceneId] = useState<string>('default');
 
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -417,11 +418,13 @@ export function App() {
             setCurrentView('editor');
             if (found.scenes && found.scenes.length > 0) {
               setScenes(found.scenes);
+              setActiveSceneId(found.scenes[0].id);
             } else {
               setScenes([{ id: 'default', name: 'Main Scene', objects: found.objects }]);
+              setActiveSceneId('default');
             }
-            setOpenTabs([{ id: 'scene-default', name: 'Main Scene', type: 'scene' }]);
-            setActiveTabId('scene-default');
+            setOpenTabs([{ id: `scene-${found.scenes && found.scenes.length > 0 ? found.scenes[0].id : 'default'}`, name: found.scenes && found.scenes.length > 0 ? found.scenes[0].name : 'Main Scene', type: 'scene' }]);
+            setActiveTabId(`scene-${found.scenes && found.scenes.length > 0 ? found.scenes[0].id : 'default'}`);
           }
         } catch (e) {
           console.error('Error restoring active project', e);
@@ -432,12 +435,8 @@ export function App() {
 
   // Keep active scene's objects array synchronized with local editor state
   useEffect(() => {
-    const currentSceneTab = openTabs.find(t => t.id === activeTabId && t.type === 'scene');
-    if (currentSceneTab) {
-      const currentSceneId = currentSceneTab.id.replace('scene-', '');
-      setScenes(prev => prev.map(sc => sc.id === currentSceneId ? { ...sc, objects } : sc));
-    }
-  }, [objects, activeTabId, openTabs]);
+    setScenes(prev => prev.map(sc => sc.id === activeSceneId ? { ...sc, objects } : sc));
+  }, [objects, activeSceneId]);
 
   // Auto-save changes to the active project in the database
   useEffect(() => {
@@ -503,23 +502,27 @@ export function App() {
 
     if (project.scenes && project.scenes.length > 0) {
       setScenes(project.scenes);
+      setActiveSceneId(project.scenes[0].id);
     } else {
       setScenes([{ id: 'default', name: 'Main Scene', objects: project.objects }]);
+      setActiveSceneId('default');
     }
-    setOpenTabs([{ id: 'scene-default', name: 'Main Scene', type: 'scene' }]);
-    setActiveTabId('scene-default');
+    const firstSceneId = project.scenes && project.scenes.length > 0 ? project.scenes[0].id : 'default';
+    const firstSceneName = project.scenes && project.scenes.length > 0 ? project.scenes[0].name : 'Main Scene';
+    setOpenTabs([{ id: `scene-${firstSceneId}`, name: firstSceneName, type: 'scene' }]);
+    setActiveTabId(`scene-${firstSceneId}`);
   };
 
   const handleSwitchScene = (targetSceneId: string) => {
-    const currentSceneTab = openTabs.find(t => t.id === activeTabId && t.type === 'scene');
-    if (currentSceneTab) {
-      const currentSceneId = currentSceneTab.id.replace('scene-', '');
-      setScenes(prev => prev.map(sc => sc.id === currentSceneId ? { ...sc, objects } : sc));
-    }
+    setScenes(prev => prev.map(sc => sc.id === activeSceneId ? { ...sc, objects } : sc));
     const targetScene = scenes.find(sc => sc.id === targetSceneId);
     if (targetScene) {
       setObjects(targetScene.objects);
       setSelectedId(null);
+    }
+    setActiveSceneId(targetSceneId);
+    if (!openTabs.some(t => t.id === `scene-${targetSceneId}`)) {
+      setOpenTabs(prev => [...prev, { id: `scene-${targetSceneId}`, name: targetScene?.name || 'Scene', type: 'scene' }]);
     }
     setActiveTabId(`scene-${targetSceneId}`);
   };
