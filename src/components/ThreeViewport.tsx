@@ -40,6 +40,7 @@ interface ThreeViewportProps {
   playbackSpeed?: number;
   skyboxTint?: string;
   cameraOrbitSpeed?: number;
+  threeDCursorPosition?: [number, number, number];
   onSelectObject: (id: string | null) => void;
   onUpdateObjectTransform: (
     id: string,
@@ -81,6 +82,7 @@ export function ThreeViewport({
   playbackSpeed = 1.0,
   skyboxTint = '#ffffff',
   cameraOrbitSpeed = 1.0,
+  threeDCursorPosition = [0, 0, 0],
   onSelectObject,
   onUpdateObjectTransform,
   onFrameChange,
@@ -270,6 +272,30 @@ export function ThreeViewport({
     }
     scene.add(axesHelper);
 
+    // 3D Cursor Helper (Red and White ring with crosshair lines)
+    const cursorGroup = new THREE.Group();
+    cursorGroup.name = 'three_d_cursor';
+    
+    const ringGeom = new THREE.RingGeometry(0.12, 0.15, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeom, ringMat);
+    ring.rotation.x = Math.PI / 2;
+    cursorGroup.add(ring);
+    
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+    
+    const pointsX = [new THREE.Vector3(-0.25, 0, 0), new THREE.Vector3(0.25, 0, 0)];
+    const geomX = new THREE.BufferGeometry().setFromPoints(pointsX);
+    const lineX = new THREE.Line(geomX, lineMat);
+    cursorGroup.add(lineX);
+    
+    const pointsZ = [new THREE.Vector3(0, 0, -0.25), new THREE.Vector3(0, 0, 0.25)];
+    const geomZ = new THREE.BufferGeometry().setFromPoints(pointsZ);
+    const lineZ = new THREE.Line(geomZ, lineMat);
+    cursorGroup.add(lineZ);
+
+    scene.add(cursorGroup);
+
     // Transform Gizmo (TransformControls)
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.size = 0.85;
@@ -450,6 +476,27 @@ export function ThreeViewport({
       mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
+
+      if (transformMode === 'cursor') {
+        const targets: THREE.Object3D[] = [];
+        threeObjects.current.forEach((obj) => {
+          if (obj.userData.helperMesh) {
+            targets.push(obj.userData.helperMesh);
+          } else {
+            targets.push(obj);
+          }
+        });
+        const intersects = raycaster.intersectObjects(targets, true);
+        let hitPoint = new THREE.Vector3();
+        if (intersects.length > 0) {
+          hitPoint.copy(intersects[0].point);
+        } else {
+          const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+          raycaster.ray.intersectPlane(floorPlane, hitPoint);
+        }
+        onUpdateState?.({ threeDCursorPosition: [hitPoint.x, hitPoint.y, hitPoint.z] });
+        return;
+      }
 
       // We only want to intersect our meshes/helpers, not the helpers of TransformControls or GridHelper
       const targets: THREE.Object3D[] = [];
@@ -1001,6 +1048,14 @@ export function ThreeViewport({
     };
   }, []);
 
+  // Synchronize 3D Cursor position from props
+  useEffect(() => {
+    const cursor = sceneRef.current?.getObjectByName('three_d_cursor');
+    if (cursor && threeDCursorPosition) {
+      cursor.position.set(threeDCursorPosition[0], threeDCursorPosition[1], threeDCursorPosition[2]);
+    }
+  }, [threeDCursorPosition]);
+
   // Sync Camera Presets
   useEffect(() => {
     const camera = cameraRef.current;
@@ -1065,10 +1120,10 @@ export function ThreeViewport({
     const transformControls = transformControlsRef.current;
     if (!transformControls) return;
 
-    if (transformMode === 'select') {
+    if (transformMode === 'select' || transformMode === 'cursor') {
       transformControls.detach();
     } else {
-      transformControls.setMode(transformMode);
+      transformControls.setMode(transformMode as any);
       // Re-attach to force update
       const activeObj = selectedId ? threeObjects.current.get(selectedId) : null;
       if (activeObj) {
@@ -1173,6 +1228,75 @@ export function ThreeViewport({
       }
     });
 
+    // Helper: Apply procedural modifiers (Array & Mirror)
+    const applyModifiers = (obj3D: THREE.Object3D, obj: SceneObject) => {
+      const toRemove: THREE.Object3D[] = [];
+      obj3D.children.forEach((child) => {
+        if (child.name && child.name.startsWith('modifier_clone')) {
+          toRemove.push(child);
+        }
+      });
+      toRemove.forEach((child) => obj3D.remove(child));
+
+      const baseVisual = obj3D.getObjectByName('base_mesh') || (obj3D instanceof THREE.Mesh ? obj3D : null);
+      if (!baseVisual) return;
+
+      const mods = (obj.customProperties?.modifiers as any[]) || [];
+      let currentInstances: THREE.Object3D[] = [baseVisual];
+
+      mods.forEach((mod) => {
+        const nextInstances: THREE.Object3D[] = [];
+        
+        if (mod.type === 'array') {
+          const count = mod.count ?? 3;
+          const offsetX = mod.offsetX ?? 1.5;
+          const offsetY = mod.offsetY ?? 0;
+          const offsetZ = mod.offsetZ ?? 0;
+
+          currentInstances.forEach((inst) => {
+            for (let i = 1; i < count; i++) {
+              const clone = inst.clone();
+              clone.name = `modifier_clone_array_${i}`;
+              clone.position.x = inst.position.x + offsetX * i;
+              clone.position.y = inst.position.y + offsetY * i;
+              clone.position.z = inst.position.z + offsetZ * i;
+              obj3D.add(clone);
+              nextInstances.push(clone);
+            }
+          });
+        } else if (mod.type === 'mirror') {
+          currentInstances.forEach((inst) => {
+            if (mod.mirrorX) {
+              const clone = inst.clone();
+              clone.name = 'modifier_clone_mirror_x';
+              clone.scale.x *= -1;
+              clone.position.x *= -1;
+              obj3D.add(clone);
+              nextInstances.push(clone);
+            }
+            if (mod.mirrorY) {
+              const clone = inst.clone();
+              clone.name = 'modifier_clone_mirror_y';
+              clone.scale.y *= -1;
+              clone.position.y *= -1;
+              obj3D.add(clone);
+              nextInstances.push(clone);
+            }
+            if (mod.mirrorZ) {
+              const clone = inst.clone();
+              clone.name = 'modifier_clone_mirror_z';
+              clone.scale.z *= -1;
+              clone.position.z *= -1;
+              obj3D.add(clone);
+              nextInstances.push(clone);
+            }
+          });
+        }
+
+        currentInstances = [...currentInstances, ...nextInstances];
+      });
+    };
+
     // Helper: Get or create texture from cache
     const getTexture = (type: SceneObject['texture'], customUrl?: string) => {
       const texType = type || 'default';
@@ -1247,9 +1371,12 @@ export function ThreeViewport({
           }
 
           const mesh = new THREE.Mesh(geometry, material);
+          mesh.name = 'base_mesh';
           mesh.castShadow = true;
           mesh.receiveShadow = true;
-          obj3D = mesh;
+          const group = new THREE.Group();
+          group.add(mesh);
+          obj3D = group;
 
           // Set initial parametric userdata
           obj3D.userData.radius = obj.radius;
@@ -1499,8 +1626,9 @@ export function ThreeViewport({
       }
 
       // Sync material details
-      if (obj3D instanceof THREE.Mesh && !(obj3D.userData.isLightHelper)) {
-        const material = obj3D.material as THREE.MeshStandardMaterial;
+      const baseMesh = obj3D.getObjectByName('base_mesh') || (obj3D instanceof THREE.Mesh ? obj3D : null);
+      if (baseMesh instanceof THREE.Mesh && !(baseMesh.userData.isLightHelper)) {
+        const material = baseMesh.material as THREE.MeshStandardMaterial;
         if (material) {
           if (shadingMode === 'solid') {
             material.color.set('#7f7f7f');
@@ -1528,13 +1656,14 @@ export function ThreeViewport({
         // Sync parametric geometries
         const ud = obj3D.userData;
         if (
-          ud.radius !== obj.radius ||
-          ud.segments !== obj.segments ||
-          ud.radialSegments !== obj.radialSegments ||
-          ud.tubularSegments !== obj.tubularSegments
+          baseMesh instanceof THREE.Mesh &&
+          (ud.radius !== obj.radius ||
+           ud.segments !== obj.segments ||
+           ud.radialSegments !== obj.radialSegments ||
+           ud.tubularSegments !== obj.tubularSegments)
         ) {
           // Dispose of old geometry
-          obj3D.geometry.dispose();
+          baseMesh.geometry.dispose();
 
           // Create new geometry
           let newGeom: THREE.BufferGeometry;
@@ -1558,7 +1687,7 @@ export function ThreeViewport({
               break;
           }
 
-          obj3D.geometry = newGeom;
+          baseMesh.geometry = newGeom;
 
           // Update cached values
           ud.radius = obj.radius;
@@ -1594,6 +1723,9 @@ export function ThreeViewport({
 
       // Sync Visibility
       obj3D.visible = obj.visible;
+
+      // Apply procedural modifiers (Array, Mirror)
+      applyModifiers(obj3D, obj);
     });
 
     // Toggle play/pause for audio nodes when isPlaying transitions

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Keyframe, SceneObject, ObjectType, EditorState, AnimationTrack, Project, ProjectScene } from './types';
+import type { SceneObject, ObjectType, EditorState, AnimationTrack, Project, ProjectScene } from './types';
 import { ThreeViewport } from './components/ThreeViewport';
 import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
@@ -23,13 +23,13 @@ import {
   RotateCw,
   Maximize2,
   MousePointer,
-  Grid,
   Smartphone,
   Menu,
   X,
   Sliders,
   FileCode,
   Eye,
+  Crosshair,
 } from 'lucide-react';
 import './App.css';
 
@@ -402,6 +402,7 @@ export function App() {
     measureMode: false,
     gizmoSize: 0.85,
     shadingMode: 'material',
+    threeDCursorPosition: [0, 0, 0],
   });
 
   // Load active project on startup if it exists in database
@@ -681,21 +682,8 @@ export function App() {
       locked: false,
       parentId: customProps?.parentId !== undefined ? customProps.parentId : null,
       position: customProps?.position || (() => {
-        let defaultPos: [number, number, number] = [0, type === 'plane' ? 0 : 0.5, 0];
-        if (type !== 'plane' && type !== 'group' && !type.includes('Light') && type !== 'camera' && type !== 'audio') {
-          let maxY = 0.5;
-          objects.forEach((o) => {
-            if (Math.abs(o.position[0]) < 0.1 && Math.abs(o.position[2]) < 0.1 && o.type !== 'plane' && o.type !== 'group' && !o.type.includes('Light') && o.type !== 'camera' && o.type !== 'audio') {
-              const top = o.position[1] + o.scale[1] / 2;
-              if (top > maxY) {
-                maxY = top;
-              }
-            }
-          });
-          if (maxY > 0.5) {
-            defaultPos = [0, maxY + 0.5, 0];
-          }
-        }
+        const cursor = editorState.threeDCursorPosition || [0, 0, 0];
+        let defaultPos: [number, number, number] = [cursor[0], cursor[1] + (type === 'plane' ? 0 : 0.5), cursor[2]];
         return defaultPos;
       })(),
       rotation: [0, 0, 0],
@@ -835,30 +823,7 @@ export function App() {
     );
   };
 
-  const handleUpdateKeyframeEasing = (
-    id: string,
-    property: AnimationTrack['property'],
-    frame: number,
-    easing: Keyframe['easing']
-  ) => {
-    setObjects((prev) =>
-      prev.map((o) => {
-        if (o.id !== id) return o;
-        const tracks = [...o.tracks];
-        const trackIndex = tracks.findIndex((t) => t.property === property);
-        if (trackIndex !== -1) {
-          const track = tracks[trackIndex];
-          const kfIndex = track.keyframes.findIndex((k) => k.frame === frame);
-          if (kfIndex !== -1) {
-            const keyframes = [...track.keyframes];
-            keyframes[kfIndex] = { ...keyframes[kfIndex], easing };
-            tracks[trackIndex] = { ...track, keyframes };
-          }
-        }
-        return { ...o, tracks };
-      })
-    );
-  };
+
 
   // Level Save/Load Actions
   const handleResetScene = () => {
@@ -982,6 +947,16 @@ export function App() {
           >
             <span>Projects Dashboard</span>
           </button>
+
+          <span style={{ opacity: 0.15, marginLeft: '12px' }}>|</span>
+
+          {/* Top-Level Header Menus (moved from Viewport for maximum space) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginLeft: '14px' }}>
+            <span style={{ cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)' }} onClick={() => handleUpdateState({ transformMode: 'select' })} className="header-menu-item-hover">View</span>
+            <span style={{ cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)' }} onClick={() => handleSelectObject(null)} className="header-menu-item-hover">Select</span>
+            <span style={{ cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)' }} onClick={() => setSidebarView('library')} className="header-menu-item-hover">Add</span>
+            <span style={{ cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', color: selectedId ? 'var(--text-secondary)' : 'rgba(255,255,255,0.2)' }} onClick={() => selectedId && handleDeleteObject(selectedId)} className="header-menu-item-hover">Object</span>
+          </div>
         </div>
 
         {/* Blender Workspace Selector (Layout, Modeling, Shading, Animation, Scripting) */}
@@ -1391,118 +1366,6 @@ export function App() {
                 )}
                 
                 {/* Viewport controls */}
-                {/* Viewport Header Bar (Interaction Row) */}
-                <div className="viewport-header-bar">
-                  <div className="viewport-header-left">
-                    {/* Mode Selector */}
-                    <select className="viewport-mode-select">
-                      <option>Object Mode</option>
-                      <option>View Mode</option>
-                    </select>
-
-                    <span style={{ opacity: 0.2 }}>|</span>
-
-                    {/* Viewport Menus */}
-                    <span className="viewport-menu-item" onClick={() => handleUpdateState({ transformMode: 'select' })}>View</span>
-                    <span className="viewport-menu-item" onClick={() => handleSelectObject(null)}>Select</span>
-                    <span className="viewport-menu-item" onClick={() => setSidebarView('library')}>Add</span>
-                    <span className="viewport-menu-item" style={{ opacity: selectedId ? 1 : 0.4 }} onClick={() => selectedId && handleDeleteObject(selectedId)}>Object</span>
-                  </div>
-
-                  <div className="viewport-header-right">
-                    {/* Transform Coordinate Space */}
-                    <button
-                      onClick={() => handleUpdateState({ transformSpace: editorState.transformSpace === 'local' ? 'world' : 'local' })}
-                      title={`Coordinate Space: ${editorState.transformSpace.toUpperCase()}`}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        color: 'var(--text-main)',
-                        padding: '1px 8px',
-                        fontSize: '9px',
-                        fontWeight: 'bold',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {editorState.transformSpace.toUpperCase()}
-                    </button>
-
-                    <span style={{ opacity: 0.2 }}>|</span>
-
-                    {/* Snapping Control */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <button
-                        onClick={() => handleUpdateState({ snapEnabled: !editorState.snapEnabled })}
-                        title="Toggle Snapping"
-                        style={{
-                          background: editorState.snapEnabled ? 'rgba(0, 240, 255, 0.2)' : 'none',
-                          border: 'none',
-                          color: editorState.snapEnabled ? 'rgb(0, 240, 255)' : 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          padding: '3px',
-                          borderRadius: '4px'
-                        }}
-                      >
-                        <Grid size={13} />
-                      </button>
-                      {editorState.snapEnabled && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                          <select
-                            value={editorState.snapTranslation}
-                            onChange={(e) => handleUpdateState({ snapTranslation: parseFloat(e.target.value) })}
-                            style={{ background: '#111', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '9px', borderRadius: '3px', padding: '1px' }}
-                          >
-                            <option value={0.1}>0.1m</option>
-                            <option value={0.25}>0.25m</option>
-                            <option value={0.5}>0.5m</option>
-                          </select>
-                        </div>
-                      )}
-                    </div>
-
-                    <span style={{ opacity: 0.2 }}>|</span>
-
-                    {/* Shading Modes (Wireframe, Solid, Material, Rendered) */}
-                    <div className="shading-modes-group">
-                      <button
-                        onClick={() => handleUpdateState({ shadingMode: 'wireframe' })}
-                        title="Wireframe View"
-                        className={`shading-mode-btn ${editorState.shadingMode === 'wireframe' ? 'active' : ''}`}
-                        style={{ color: editorState.shadingMode === 'wireframe' ? '#000' : 'var(--text-secondary)' }}
-                      >
-                        <span style={{ display: 'block', width: '8px', height: '8px', border: '1px solid currentColor', borderRadius: '50%' }} />
-                      </button>
-                      <button
-                        onClick={() => handleUpdateState({ shadingMode: 'solid' })}
-                        title="Solid View"
-                        className={`shading-mode-btn ${editorState.shadingMode === 'solid' ? 'active' : ''}`}
-                        style={{ color: editorState.shadingMode === 'solid' ? '#000' : 'var(--text-secondary)' }}
-                      >
-                        <span style={{ display: 'block', width: '8px', height: '8px', background: 'currentColor', borderRadius: '50%' }} />
-                      </button>
-                      <button
-                        onClick={() => handleUpdateState({ shadingMode: 'material' })}
-                        title="Material Preview"
-                        className={`shading-mode-btn ${editorState.shadingMode === 'material' ? 'active' : ''}`}
-                        style={{ color: editorState.shadingMode === 'material' ? '#000' : 'var(--text-secondary)' }}
-                      >
-                        <span style={{ display: 'block', width: '8px', height: '8px', background: 'currentColor', border: '1px solid var(--text-secondary)', borderRadius: '50%', opacity: 0.6 }} />
-                      </button>
-                      <button
-                        onClick={() => handleUpdateState({ shadingMode: 'rendered' })}
-                        title="Rendered View"
-                        className={`shading-mode-btn ${editorState.shadingMode === 'rendered' ? 'active' : ''}`}
-                        style={{ color: editorState.shadingMode === 'rendered' ? '#000' : 'var(--text-secondary)' }}
-                      >
-                        <span style={{ display: 'block', width: '8px', height: '8px', background: 'currentColor', borderRadius: '50%', boxShadow: editorState.shadingMode === 'rendered' ? '0 0 4px #fff' : 'none' }} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Left Vertical Toolbar */}
                 <div className="viewport-left-toolbar">
                   <button
@@ -1511,6 +1374,13 @@ export function App() {
                     title="Select Box"
                   >
                     <MousePointer size={14} />
+                  </button>
+                  <button
+                    className={`left-toolbar-btn ${editorState.transformMode === 'cursor' ? 'active' : ''}`}
+                    onClick={() => handleUpdateState({ transformMode: 'cursor' })}
+                    title="3D Cursor (Place Spawning Origin)"
+                  >
+                    <Crosshair size={14} />
                   </button>
                   <button
                     className={`left-toolbar-btn ${editorState.transformMode === 'translate' ? 'active' : ''}`}
@@ -1600,6 +1470,7 @@ export function App() {
                   playbackSpeed={editorState.playbackSpeed ?? 1.0}
                   skyboxTint={editorState.skyboxTint || '#ffffff'}
                   cameraOrbitSpeed={editorState.cameraOrbitSpeed ?? 1.0}
+                  threeDCursorPosition={editorState.threeDCursorPosition}
                   onSelectObject={handleSelectObject}
                   onUpdateObjectTransform={handleUpdateObjectTransform}
                   onFrameChange={(frame) => handleUpdateState({ currentFrame: frame })}
@@ -1623,6 +1494,8 @@ export function App() {
             <Inspector
               object={selectedObject}
               currentFrame={editorState.currentFrame}
+              editorState={editorState}
+              onUpdateState={handleUpdateState}
               onUpdateObject={handleUpdateObject}
               onToggleKeyframe={handleToggleKeyframe}
               onDeleteObject={(id) => {
@@ -1634,7 +1507,6 @@ export function App() {
                 window.dispatchEvent(event);
               }}
               onDuplicateObject={handleDuplicateObject}
-              onUpdateKeyframeEasing={handleUpdateKeyframeEasing}
             />
           </div>
         </div>

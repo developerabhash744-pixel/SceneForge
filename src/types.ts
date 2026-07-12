@@ -56,7 +56,7 @@ export interface SceneObject {
   // Animation tracks
   tracks: AnimationTrack[];
   // Custom user-defined tags/metadata
-  customProperties: Record<string, string>;
+  customProperties: Record<string, any>;
   script?: string;
   scriptName?: string;
 }
@@ -71,7 +71,7 @@ export interface EditorState {
   fps: number;
   loop: boolean;
   autoKeyframe: boolean;
-  transformMode: 'translate' | 'rotate' | 'scale' | 'select';
+  transformMode: 'translate' | 'rotate' | 'scale' | 'select' | 'cursor';
   snapEnabled: boolean;
   snapTranslation: number;
   snapRotation: number; // in degrees
@@ -92,6 +92,7 @@ export interface EditorState {
   skyboxTint?: string;
   cameraOrbitSpeed?: number;
   shadingMode?: 'wireframe' | 'solid' | 'material' | 'rendered';
+  threeDCursorPosition?: [number, number, number];
 }
 
 export interface ProjectScene {
