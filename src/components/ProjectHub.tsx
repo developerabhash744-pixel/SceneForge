@@ -19,6 +19,8 @@ interface ProjectHubProps {
   onLoadProject: (project: Project) => void;
   activeProjectId: string | null;
   onBackToEditor?: () => void;
+  viewportMode?: 'mobile' | 'tablet';
+  onViewportModeChange?: (mode: 'mobile' | 'tablet') => void;
 }
 
 const TEMPLATES = [
@@ -239,7 +241,7 @@ const TEMPLATES = [
   }
 ];
 
-export function ProjectHub({ onLoadProject, activeProjectId, onBackToEditor }: ProjectHubProps) {
+export function ProjectHub({ onLoadProject, activeProjectId, onBackToEditor, viewportMode = 'mobile', onViewportModeChange }: ProjectHubProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectName, setProjectName] = useState('');
   const [projectDesc, setProjectDesc] = useState('');
@@ -414,7 +416,29 @@ export function ProjectHub({ onLoadProject, activeProjectId, onBackToEditor }: P
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* Viewport Resolution Mode Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+            <span style={{ fontSize: '11px', opacity: 0.5 }}>Screen Mode:</span>
+            <select
+              value={viewportMode}
+              onChange={(e) => onViewportModeChange?.(e.target.value as 'mobile' | 'tablet')}
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                color: '#fff',
+                fontSize: '11px',
+                padding: '5px 10px',
+                borderRadius: '6px',
+                outline: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              <option value="mobile" style={{ background: '#09090b', color: '#fff' }}>Auto (Full Width)</option>
+              <option value="tablet" style={{ background: '#09090b', color: '#fff' }}>Tablet Preview (1024 x 768)</option>
+            </select>
+          </div>
           {activeProjectId && onBackToEditor && (
             <button
               onClick={onBackToEditor}

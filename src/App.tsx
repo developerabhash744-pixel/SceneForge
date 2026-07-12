@@ -939,6 +939,8 @@ export function App() {
         onLoadProject={handleLoadProject}
         activeProjectId={activeProjectId}
         onBackToEditor={() => setCurrentView('editor')}
+        viewportMode={viewportMode}
+        onViewportModeChange={setViewportMode}
       />
     );
   }
